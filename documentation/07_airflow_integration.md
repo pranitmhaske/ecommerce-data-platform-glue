@@ -1,4 +1,4 @@
-## ✅ Section 7 — Integration with Airflow (Enterprise-Level Orchestration)
+## Section 7 — Integration with Airflow (Enterprise-Level Orchestration)
 
 This project runs as a fully automated, event-driven, end-to-end data pipeline.  
 Once deployed, the Glue Bronze → Silver → Gold → Redshift transformations execute without any manual intervention. Airflow continuously monitors RAW data arrivals, orchestrates Glue jobs, validates configuration, and enforces strict sequencing across all layers.
