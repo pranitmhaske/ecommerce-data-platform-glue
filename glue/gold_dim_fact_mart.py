@@ -11,7 +11,7 @@ from pyspark.context import SparkContext
 # ====================================================
 from pyspark.sql import functions as F
 from pyspark.sql.functions import broadcast
-from pyspark.sql import types as T   # <---- ADDED
+from pyspark.sql import types as T
 
 from utils.logger import get_logger
 from utils.rules import dq_check_not_null
