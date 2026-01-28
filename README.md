@@ -4,7 +4,7 @@
 
 End-to-end, event-driven data platform using Airflow, AWS Glue, S3 (Bronze/Silver/Gold), and Redshift Serverless.
 
-![Architecture](docs/architecture/full_architecture.drawio.png)
+<img src="docs/architecture/full_architecture.drawio.png" width="800"/>
 
 This repository demonstrates a production-style data engineering platform designed to ingest, clean, model, and serve e-commerce data at scale.
 
