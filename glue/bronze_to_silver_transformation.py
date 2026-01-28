@@ -26,7 +26,7 @@ from utils.validator import validate
 from utils.scd_merge import merge_user_history
 from utils.logger import get_logger
 # =====================================================================
-# GLUE ARGUMENTS (NEW REQUIRED BLOCK)
+# GLUE ARGUMENTS 
 # =====================================================================
 args = getResolvedOptions(
     sys.argv,
@@ -37,6 +37,8 @@ bronze_base = args["bronze_path"]
 silver_base = args["silver_path"]
 quarantine_base = args["quarantine_path"]
 metrics_base = args["metrics_path"]
+job_name = args["JOB_NAME"]
+
 
 # =====================================================================
 # SPARK / GLUE SESSION BUILDER
