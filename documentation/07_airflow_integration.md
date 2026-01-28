@@ -91,7 +91,7 @@ This ensures:
 ---
 
 ### 7.5 Fail-Safe Orchestration Guarantees
-Your DAGs enforce production-grade safety controls:
+DAGs enforce production-grade safety controls:
 - wait_for_completion = True
 - Explicit on_failure_callback
 - Retry policies
@@ -119,7 +119,7 @@ This guarantees:
 ---
 
 ### 7.7 Why This Airflow Design Is Enterprise-Level
-Your orchestration includes all patterns expected in senior-level data platforms:
+Orchestration includes all patterns expected in senior-level data platforms:
 - Fully automated, event-driven execution
 - Multi-format ingestion
 - Glue Spark integration
