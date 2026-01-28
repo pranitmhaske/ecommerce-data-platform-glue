@@ -53,7 +53,7 @@ Execution class:
 - Glue G.1X or G.2X (depending on configuration)
 
 Why this is correct:
-- ~11 GB dataset
+- 9.1 GB dataset
 - Heavy schema drift handling
 - Deduplication and quarantine logic
 - SCD-style user handling
