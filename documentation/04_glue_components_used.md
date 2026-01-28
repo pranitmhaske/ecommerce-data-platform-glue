@@ -1,158 +1,198 @@
-# Glue Components Used (Glue Edition)
+# Glue Components Used (Enterprise-Grade)
 
-This section documents the AWS Glue components used in the pipeline, focusing on execution roles, runtime configuration, 
-job parameters, observability, and lifecycle considerations. The documentation is intentionally scoped to an enterprise-appropriate level.
+This section documents all AWS Glue–related components actually used in the pipeline, why they were chosen, and how they fit into a real enterprise data platform.  
+No over-claims and no unused features.
 
 ---
 
-## IAM Roles (Enterprise-Grade, Minimal & Accurate)
+## Glue Components Used (Glue Edition)
 
-### GlueExecutionRole
+The pipeline uses:
+- Two AWS Glue Spark jobs
+- Minimal IAM roles
+- Job parameters injected by Airflow
+- Metrics written to S3
+- Lifecycle policies documented as recommended governance
 
-Used by both Glue Spark jobs:
-- Bronze → Silver
-- Silver → Gold
+---
 
-Required permissions (least-privilege):
+## Glue Jobs (Core Processing Units)
 
-S3 access:
-- s3:GetObject
-- s3:PutObject
-- s3:ListBucket
+### Glue Job — Bronze → Silver (`bronze_to_silver_transformation.py`)
 
-Granted only on:
-- ecom-p3-bronze
-- ecom-p3-silver
-- ecom-p3-gold
-- ecom-p3-quarantine
-- ecom-p3-metrics
-- ecom-p3-scripts
+**Purpose**
+- Clean highly inconsistent ~11 GB raw data
+- Normalize schemas and handle schema drift
+- Sanitize nulls, void columns, and invalid types
+- Dataset-specific deduplication
+- Row-level quarantine for invalid records
+- Enforce strict `event_date` partitioning
+- Generate data quality metrics
 
-CloudWatch Logs:
-- Glue job logging
+**Key Features (Senior-Level)**
+- Handles mixed formats: JSON, NDJSON, CSV, CSV.GZ, TXT, Parquet
+- Canonical schema enforcement using code-based schemas
+- SCD-style user history handling in Silver
+- Centralized row-level quarantine logic
+- Fail-fast checks for empty outputs
+- Writes fully partitioned Silver datasets
 
-AWS Glue service permissions:
-- Job execution
-- Spark runtime management
+**Job Parameters (passed from Airflow)**
 
-KMS (conditional):
-- kms:Decrypt only if S3 buckets are encrypted
+| Parameter | Description |
+|---------|------------|
+| `--bronze_path` | Bronze input base path |
+| `--silver_path` | Silver output base path |
+| `--quarantine_path` | Quarantine S3 prefix |
+| `--metrics_path` | Metrics output location |
+| `--JOB_NAME` | Glue job name |
 
-Why this matters:
-- Glue jobs can access only pipeline-related data
-- Prevents accidental cross-bucket access
-- Matches real enterprise security posture
+---
 
-IAM is intentionally documented at the role level, not at raw policy JSON level, which mirrors how real teams document security.
+### Glue Job — Silver → Gold (`gold_dim_fact_mart.py`)
+
+**Purpose**
+- Build analytics-ready dimension, fact, and mart tables
+- Apply business logic at scale
+- Enforce schema stability for BI consumption
+
+**Key Features (Senior-Level)**
+- Broadcast joins for enrichment
+- Strict schemas via explicit `StructType`
+- Deterministic full refresh (overwrite) modeling
+- Timestamp safety and null handling
+- Produces:
+  - Dimensions: users, date, country, status
+  - Facts: events, transactions, user_activity
+  - Marts: daily_revenue, daily_active_users, user_ltv
+
+**Job Parameters**
+
+| Parameter | Description |
+|---------|------------|
+| `--SILVER_BASE` | Silver input |
+| `--GOLD_DIM` | Dimension output path |
+| `--GOLD_FACT` | Fact output path |
+| `--GOLD_MART` | Mart output path |
 
 ---
 
 ## Glue Execution Class & Runtime
 
-Execution class:
-- Glue G.1X or G.2X (depending on configuration)
+**Execution Class**
+- G.1X (default)
 
-Why this is correct:
-- 9.1 GB dataset
-- Heavy schema drift handling
-- Deduplication and quarantine logic
-- SCD-style user handling
-- Aggregations for Gold marts
+**Why this is correct**
+- ~11 GB dataset
+- CPU and I/O heavy workloads (schema drift, joins, aggregations)
+- Cost-efficient for repeated runs
+- Easily scalable to G.2X or G.4X as data volume grows
 
-Important clarifications:
-- Jobs run as distributed Spark jobs
-- Not Python Shell jobs
-- Execution class selection is meaningful and intentional
+Jobs run as distributed Spark jobs, not Python Shell jobs.
 
 ---
 
-## Glue Job Parameters / Arguments
+## IAM Roles Used (Least-Privilege Design)
 
-### Bronze → Silver Job
+### IAM Role — GlueExecutionRole
 
-- --bronze_path     s3://ecom-p3-bronze
-- --silver_path     s3://ecom-p3-silver
-- --quarantine_path s3://ecom-p3-quarantine
-- --metrics_path    s3://ecom-p3-metrics
+Used by both Glue Spark jobs.
 
-### Silver → Gold Job
+**Permissions**
+- `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` on:
+  - ecom-p3-bronze
+  - ecom-p3-silver
+  - ecom-p3-gold
+  - ecom-p3-quarantine
+  - ecom-p3-metrics
+  - ecom-p3-scripts
+- CloudWatch Logs (Glue job logs)
+- Glue service execution permissions
+- `kms:Decrypt` (only if S3 encryption is enabled)
 
-- --SILVER_BASE s3://ecom-p3-silver
-- --GOLD_DIM    s3://ecom-p3-gold/dim
-- --GOLD_FACT   s3://ecom-p3-gold/fact
-- --GOLD_MART   s3://ecom-p3-gold/mart
+### IAM Role — RedshiftCopyRole
 
-Why this is enterprise-grade:
-- Decouples code from environment
-- Enables reuse across dev, test, and prod
-- Allows Airflow to inject paths dynamically
-- Standard practice in production Glue pipelines
+Used by Redshift Serverless COPY commands.
+
+- Read access to `s3://ecom-p3-gold`
+- Trust relationship: `redshift-serverless.amazonaws.com`
+
+**Why this matters**
+- Least privilege access
+- Clear blast-radius control
+- Matches real enterprise security posture
 
 ---
 
-## Metrics & Observability
+## Glue Metrics & Logging
 
-### Bronze → Silver Job
+**Metrics**
 
-Captured metrics:
-- Dataset row counts
-- Null rates per column
-- Corrupt and quarantined row counts
-- Data quality rule results
-
-Metrics written as CSV to:
+Written to:
 - `s3://ecom-p3-metrics/{dataset}/`
 
-### Silver → Gold Job
+Includes:
+- Total row counts
+- Null rates per column
+- Data quality rule results
+- Quarantined row counts
 
-Captured metrics:
-- Row counts for dimension, fact, and mart outputs
-- Aggregation success logging
-- Schema stability verification (implicit)
+**Logging**
 
-Why this matters:
-- Enables auditability
-- Supports debugging and governance
-- Ready for Athena or external monitoring tools
-- CloudWatch usage is optional, not mandatory
+Glue job logs emitted to CloudWatch:
+- `/aws-glue/jobs/output`
+- `/aws-glue/jobs/error`
+- `/aws-glue/jobs/logs-v2`
+
+**Purpose:** auditability, debugging, and governance
 
 ---
 
-## Lifecycle Policies (Enterprise Standard – Documented for Completeness)
+## Bad Data Handling (Code-Accurate)
 
-Lifecycle rules are not required for correctness, but documenting them demonstrates senior-level thinking.
+**Important correction**
+- Glue native `badRecordsPath` is not used
+- Spark permissive parsing is not relied upon
 
-Recommended retention strategy:
+**Actual implementation**
+- File-level corruption  
+  - Handled earlier in RAW → BRONZE Airflow ingestion
+- Row-level corruption  
+  - Explicitly handled in Glue code using:
+    - Schema validation
+    - Data quality rules
+    - Null checks
+    - Type enforcement
+    - Business rule validation
 
-RAW:
-- 30–60 days
-- Reason: audits and replay
+Invalid rows are written to:
+- `s3://ecom-p3-quarantine/{dataset}/`
 
-BRONZE:
-- 7–30 days
-- Reason: temporary ingestion layer
+**Why this is enterprise-correct**
+- Deterministic behavior
+- Full control over error classification
+- No silent data loss
+- Easier auditing than Glue-managed corruption handling
 
-SILVER:
-- 90 days
-- Reason: intermediate analytics
+This is a custom quarantine pattern, not Glue-managed corruption handling.
 
-GOLD:
-- Indefinite
-- Reason: business-critical data
+---
 
-QUARANTINE:
-- 30 days
-- Reason: debugging and inspection
+## S3 Lifecycle Policies (Documented for Governance)
 
-METRICS:
-- 180 days
-- Reason: trend analysis
+Lifecycle rules are recommended, not required, and are documented for completeness.
 
-Storage class transitions:
-- After 30 days: STANDARD → STANDARD_IA
-- Optional: GLACIER_IR for older RAW and BRONZE data
+| Layer | Retention | Reason |
+|-----|-----------|--------|
+| RAW | 60–90 days | Replay and audit |
+| BRONZE | 30–120 days | Temporary staging |
+| SILVER | No expiry | Reprocessing and backfills |
+| GOLD | No expiry | Business-critical |
+| QUARANTINE | 30 days | Debug only |
+| METRICS | 180 days | Trend analysis |
 
-Result:
-- Cost optimized
-- No architectural change
-- Fully production-realistic
+**Optional transitions**
+- STANDARD → STANDARD_IA
+- Optional GLACIER_IR for older RAW and BRONZE data
+
+Lifecycle policies improve cost efficiency without changing architecture.
