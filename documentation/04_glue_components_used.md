@@ -83,7 +83,7 @@ The pipeline uses:
 - G.1X (default)
 
 **Why this is correct**
-- ~11 GB dataset
+- 9.1 GB dataset
 - CPU and I/O heavy workloads (schema drift, joins, aggregations)
 - Cost-efficient for repeated runs
 - Easily scalable to G.2X or G.4X as data volume grows
