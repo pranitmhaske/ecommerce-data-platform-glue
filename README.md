@@ -17,3 +17,24 @@ Production-grade ELT analytics platform built with Airflow, AWS Glue (Spark), Am
 - Schema enforcement, schema drift handling, quarantine-based error isolation, SCD Type 1 dimensions
 - Deterministic fact & dimension modeling for analytics
 - Scales from GBs to TBs without redesign
+
+## Execution Proof (Screenshots)
+
+This section demonstrates that the platform was executed end-to-end on AWS.
+
+### Airflow
+- DAG orchestration and successful runs
+- Master orchestrator triggering downstream pipelines
+
+### AWS Glue
+- Spark ETL job executions
+- CloudWatch logs for observability
+
+### Amazon S3
+- RAW / BRONZE / SILVER / GOLD bucket structure
+
+### Amazon Redshift Serverless
+- Successful COPY from S3 GOLD
+- Row-count validation on dimension, fact, and mart tables
+
+See full execution screenshots in [`docs/screenshots`](docs/screenshots).
