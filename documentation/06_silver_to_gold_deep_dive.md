@@ -1,6 +1,6 @@
 ## 6. Silver → Gold Glue Job (Deep Dive)
 Dimensional modeling, fact table engineering, stable schema enforcement, and business-ready marts.  
-This is the layer where your pipeline becomes analytics-grade.  
+This is the layer where pipeline becomes analytics-grade.  
 Silver → Gold is what converts cleaned operational data into facts, dims, and marts that BI tools and analysts use.
 
 ---
@@ -15,12 +15,12 @@ This Glue job:
 - Handles timestamp cleanup, numeric casting, SCD behavior
 - Guarantees partitioned, optimized output
 
-This is your core business logic layer.
+This is core business logic layer.
 
 ---
 
 ### 6.2 Gold Model Structure
-Your Gold layer has three zones:
+Gold layer has three zones:
 
 **DIM tables**
 - dim_users
@@ -51,7 +51,7 @@ transactions = spark.read.parquet(f"{SILVER_BASE}/transactions")
 Before transformation:
 - Void/unknown types sanitized  
   Many real datasets produce “void” type columns.  
-  Your code replaces them with string(null) columns to stabilize schema.
+  The code replaces them with string(null) columns to stabilize schema.
 - DQ check for event_id  
   This ensures events table integrity before building facts.
 
@@ -185,7 +185,7 @@ This is the hallmark of a production-star, enterprise-grade data warehouse.
 ---
 
 ### 6.8 Performance Engineering
-Your job includes:
+The job includes:
 - Broadcast joins for dimension lookups
 - Coalesce before writing to reduce file counts
 - PartitionOverwriteMode = dynamic
