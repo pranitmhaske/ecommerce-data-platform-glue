@@ -59,8 +59,6 @@ This ZIP contains:
 - gold_dim_fact_mart.py
 - all shared utils/
 
-This matches how Glue jobs are configured in your project.
-
 ---
 
 ### 10.4 Create Glue Job — Bronze → Silver
