@@ -21,7 +21,7 @@ The pipeline uses:
 ### Glue Job — Bronze → Silver (`bronze_to_silver_transformation.py`)
 
 **Purpose**
-- Clean highly inconsistent ~11 GB raw data
+- Clean highly inconsistent 9.1 GB raw data
 - Normalize schemas and handle schema drift
 - Sanitize nulls, void columns, and invalid types
 - Dataset-specific deduplication
