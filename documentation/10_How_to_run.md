@@ -100,7 +100,7 @@ s3://ecom-p3-scripts/scripts/gold_dim_fact_mart.py
 ---
 
 ### 10.6 Configure Airflow Integration
-Your Airflow DAGs already handle Glue execution.
+Airflow DAGs already handle Glue execution.
 
 **Required Airflow Variables**  
 Set once (already done in your project):
@@ -171,7 +171,3 @@ SELECT * FROM ecommerce_gold.dim_users LIMIT 20;
 - No idle cost
 - No always-on clusters
 - Airflow controls execution frequency
-- You already follow best practice:
-  - create → run → destroy expensive infra (NAT / EMR when used)
-
-This is cost-efficient and production-correct.
