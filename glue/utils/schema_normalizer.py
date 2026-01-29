@@ -24,7 +24,7 @@ def dict_to_structtype(schema_dict):
 EVENTS_SCHEMA = {
     "event_id": "string",
     "user_id": "string",
-    "ts": "timestamp",            
+    "ts": "timestamp",  # raw string -> parsed timestamp          
     "age": "integer",
     "country": "string",
     "email": "string",
