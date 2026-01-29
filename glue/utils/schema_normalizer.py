@@ -130,7 +130,7 @@ def _safe_cast(df, col, target):
 # Main normalizer
 # -----------------------------
 
-def normalize_schema(df, dataset_name, allow_quarantine=False, drop_unknown=True):
+def normalize_schema(df, dataset_name, allow_quarantine=True, drop_unknown=True):
     """Normalize `df` according to canonical schema for `dataset_name`.
 
     Returns:
