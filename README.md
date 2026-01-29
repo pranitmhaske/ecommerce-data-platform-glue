@@ -15,7 +15,7 @@ Production-grade ELT analytics platform built with Airflow, AWS Glue (Spark), Am
 - Event-driven ingestion of untrusted data (S3 → Airflow)
 - RAW → BRONZE → SILVER → GOLD lakehouse architecture
 - Schema enforcement, schema drift handling, quarantine-based error isolation, SCD Type 1 dimensions
-- Deterministic dimension & fact & mart modeling for analytics
+- Deterministic dimension, fact & mart modeling for analytics
 - Scales from GBs to TBs without redesign
 
 ## Execution Proof (Screenshots)
