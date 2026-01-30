@@ -1,3 +1,4 @@
+import sys
 # ====================================================
 # GLUE IMPORTS
 # ====================================================
@@ -11,10 +12,11 @@ from pyspark.context import SparkContext
 # ====================================================
 from pyspark.sql import functions as F
 from pyspark.sql.functions import broadcast
-from pyspark.sql import types as T
+from pyspark.sql import types as T   
 
 from utils.logger import get_logger
 from utils.rules import dq_check_not_null
+
 
 def safe_timestamp(col):
     return F.when(
@@ -22,8 +24,21 @@ def safe_timestamp(col):
         F.col(col).cast("timestamp")
     ).otherwise(None)
 
+
 # ====================================================
-# FIXED SCHEMAS ADDED
+# DF FIRST → RDD FALLBACK
+# ====================================================
+def enforce_schema_df(df, schema):
+    for field in schema.fields:
+        if field.name not in df.columns:
+            df = df.withColumn(field.name, F.lit(None).cast(field.dataType))
+        else:
+            df = df.withColumn(field.name, F.col(field.name).cast(field.dataType))
+    return df.select([f.name for f in schema.fields])
+
+
+# ====================================================
+# FIXED SCHEMAS
 # ====================================================
 GOLD_FACT_EVENTS_SCHEMA = T.StructType([
     T.StructField("event_id", T.StringType()),
@@ -75,6 +90,7 @@ def create_spark_session(app_name="silver_to_gold"):
     spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
     return spark, glueContext
 
+
 # ====================================================
 # LOAD SILVER TABLES
 # ====================================================
@@ -90,6 +106,7 @@ def load_silver_tables(spark, base_path):
 
     return events, users, transactions
 
+
 # ====================================================
 # DIM TABLES
 # ====================================================
@@ -103,6 +120,7 @@ def build_dim_users(users, output_path):
     dim_users.write.mode("overwrite").parquet(f"{output_path}/dim_users")
     print("✔ dim_users written")
 
+
 def build_dim_country(events, output_path):
     dim_country = (
         events.select(F.col("country").alias("country"))
@@ -112,6 +130,7 @@ def build_dim_country(events, output_path):
     dim_country.write.mode("overwrite").parquet(f"{output_path}/dim_country")
     print("✔ dim_country written")
 
+
 def build_dim_status(transactions, output_path):
     dim_status = (
         transactions.select("status")
@@ -120,6 +139,7 @@ def build_dim_status(transactions, output_path):
     )
     dim_status.write.mode("overwrite").parquet(f"{output_path}/dim_status")
     print("✔ dim_status written")
+
 
 def build_dim_dates(events, transactions, output_path):
     event_dates = events.select(F.to_date("ts").alias("date"))
@@ -139,6 +159,7 @@ def build_dim_dates(events, transactions, output_path):
     dim_date.write.mode("overwrite").parquet(f"{output_path}/dim_date")
     print("✔ dim_date written")
 
+
 # ====================================================
 # FACT TABLES
 # ====================================================
@@ -147,8 +168,6 @@ def build_fact_events(events, users, output_path, spark):
     events_pruned = events.select("event_id", "user_id", "ts", "country")
 
     events_pruned = events_pruned.withColumn("event_date", F.to_date("ts"))
-
-    # --- FIX: clean invalid timestamps before schema enforcement ---
     events_pruned = events_pruned.withColumn("ts", safe_timestamp("ts"))
 
     fact_events = (
@@ -186,7 +205,10 @@ def build_fact_events(events, users, output_path, spark):
         .withColumn("ts", F.to_timestamp("ts")) \
         .withColumn("event_date", F.to_date("event_date"))
 
-    fact_events = spark.createDataFrame(fact_events.rdd, GOLD_FACT_EVENTS_SCHEMA)   # <---- FIX APPLIED
+    try:
+        fact_events = enforce_schema_df(fact_events, GOLD_FACT_EVENTS_SCHEMA)
+    except Exception:
+        fact_events = spark.createDataFrame(fact_events.rdd, GOLD_FACT_EVENTS_SCHEMA)
 
     fact_events.coalesce(10).write \
         .mode("overwrite") \
@@ -194,6 +216,7 @@ def build_fact_events(events, users, output_path, spark):
         .parquet(f"{output_path}/fact_events")
 
     print("✔ fact_events written with stable schema")
+
 
 def build_fact_transactions(transactions, users, output_path, spark):
     users_pruned = users.select("user_id", "city", "age", "email")
@@ -220,8 +243,6 @@ def build_fact_transactions(transactions, users, output_path, spark):
     )
 
     fact_tx = fact_tx.withColumn("amount", F.col("amount").cast("double"))
-
-    # --- FIX: clean invalid timestamps ---
     fact_tx = fact_tx.withColumn("created_at", safe_timestamp("created_at"))
     fact_tx = fact_tx.withColumn("delivered_at", safe_timestamp("delivered_at"))
 
@@ -230,11 +251,14 @@ def build_fact_transactions(transactions, users, output_path, spark):
         "tx_date", "user_city", "user_age", "user_email"
     )
 
-    fact_tx = spark.createDataFrame(fact_tx.rdd, FACT_TX_SCHEMA)
+    try:
+        fact_tx = enforce_schema_df(fact_tx, FACT_TX_SCHEMA)
+    except Exception:
+        fact_tx = spark.createDataFrame(fact_tx.rdd, FACT_TX_SCHEMA)
 
     fact_tx.coalesce(10).write.mode("overwrite").parquet(f"{output_path}/fact_transactions")
-
     print("✔ fact_transactions written")
+
 
 def build_fact_user_activity(events, transactions, users, output_path):
     events_daily = (
@@ -267,10 +291,9 @@ def build_fact_user_activity(events, transactions, users, output_path):
         )
     )
 
-    fact_user_activity.write.mode("overwrite") \
-        .parquet(f"{output_path}/fact_user_activity")
-
+    fact_user_activity.write.mode("overwrite").parquet(f"{output_path}/fact_user_activity")
     print("✔ fact_user_activity written")
+
 
 # ====================================================
 # MART TABLES
@@ -304,55 +327,73 @@ def build_daily_revenue(transactions, output_path, spark):
 
     daily = daily.select(expected_cols)
 
-    daily = spark.createDataFrame(daily.rdd, DAILY_REVENUE_SCHEMA)   # <---- FIX APPLIED
+    try:
+        daily = enforce_schema_df(daily, DAILY_REVENUE_SCHEMA)
+    except Exception:
+        daily = spark.createDataFrame(daily.rdd, DAILY_REVENUE_SCHEMA)
 
-    daily.write.mode("overwrite") \
-        .parquet(f"{output_path}/daily_revenue")
-
+    daily.write.mode("overwrite").parquet(f"{output_path}/daily_revenue")
     print("✔ daily_revenue written with stable schema")
 
+
 def build_daily_active_users(events, transactions, output_path):
+    # Deduplicate user per day at source level 
+    events_users = (
+        events
+        .select(
+            F.to_date("ts").alias("date"),
+            F.col("user_id")
+        )
+        .dropDuplicates(["date", "user_id"])
+    )
+
+    tx_users = (
+        transactions
+        .select(
+            F.to_date("created_at").alias("date"),
+            F.col("user_id")
+        )
+        .dropDuplicates(["date", "user_id"])
+    )
+
+    # DAU per source
     events_dau = (
-        events.groupBy(F.to_date("ts").alias("date"))
-        .agg(F.countDistinct("user_id").cast("bigint").alias("event_active_users"))
+        events_users
+        .groupBy("date")
+        .agg(F.count("user_id").cast("bigint").alias("event_active_users"))
     )
 
     tx_dau = (
-        transactions.groupBy(F.to_date("created_at").alias("date"))
-        .agg(F.countDistinct("user_id").cast("bigint").alias("tx_active_users"))
+        tx_users
+        .groupBy("date")
+        .agg(F.count("user_id").cast("bigint").alias("tx_active_users"))
+    )
+
+    # Total DAU (union + dedupe once)
+    total_dau = (
+        events_users
+        .unionByName(tx_users)
+        .dropDuplicates(["date", "user_id"])
+        .groupBy("date")
+        .agg(F.count("user_id").cast("bigint").alias("total_active_users"))
     )
 
     dau = (
-        events_dau.join(tx_dau, "date", "full")
-        .withColumn(
+        total_dau
+        .join(events_dau, "date", "left")
+        .join(tx_dau, "date", "left")
+        .withColumn("event_active_users", F.coalesce("event_active_users", F.lit(0)))
+        .withColumn("tx_active_users", F.coalesce("tx_active_users", F.lit(0)))
+        .select(
+            "date",
             "event_active_users",
-            F.coalesce(F.col("event_active_users"), F.lit(0).cast("bigint"))
-        )
-        .withColumn(
             "tx_active_users",
-            F.coalesce(F.col("tx_active_users"), F.lit(0).cast("bigint"))
-        )
-        .withColumn(
-            "total_active_users",
-            F.col("event_active_users") + F.col("tx_active_users")
+            "total_active_users"
         )
     )
 
-    expected_cols = ["date", "event_active_users", "tx_active_users", "total_active_users"]
-
-    for c in expected_cols:
-        if c not in dau.columns:
-            if c == "date":
-                dau = dau.withColumn(c, F.lit(None).cast("date"))
-            else:
-                dau = dau.withColumn(c, F.lit(0).cast("bigint"))
-
-    dau = dau.select(expected_cols)
-
-    dau.write.mode("overwrite") \
-        .parquet(f"{output_path}/daily_active_users")
-
-    print("✔ daily_active_users written with stable schema")
+    dau.write.mode("overwrite").parquet(f"{output_path}/daily_active_users")
+    print("✔ daily_active_users written")
 
 def build_user_ltv(events, transactions, output_path):
     events_user = (
@@ -381,8 +422,8 @@ def build_user_ltv(events, transactions, output_path):
     ltv = ltv.withColumn("last_event", safe_timestamp("last_event"))
 
     ltv.write.mode("overwrite").parquet(f"{output_path}/user_ltv")
-
     print("✔ user_ltv written")
+
 
 # ====================================================
 # MAIN
@@ -396,9 +437,6 @@ def main():
 
     args = getResolvedOptions(sys.argv, ["SILVER_BASE", "GOLD_DIM", "GOLD_FACT", "GOLD_MART"])
 
-    # ====================================================
-    # Glue Job Init
-    # ====================================================
     job = Job(glueContext)
     job.init("silver_to_gold", args)
 
@@ -443,12 +481,9 @@ def main():
     build_daily_active_users(events, transactions, GOLD_MART)
     build_user_ltv(events, transactions, GOLD_MART)
 
-    # ====================================================
-    # Glue Job Commit
-    # ====================================================
     job.commit()
-
     spark.stop()
+
 
 if __name__ == "__main__":
     main()
