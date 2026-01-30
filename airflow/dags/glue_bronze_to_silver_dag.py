@@ -112,7 +112,7 @@ with DAG(
 
     # ---------------------- 3. Verify Silver outputs exist ---------------------- #
     @task()
-    def verify_silver_outputs():
+    def verify_silver_outputs(prev:dict):
         s3 = _get_s3_client()
 
         bucket = SILVER_BASE.replace("s3://", "").split("/")[0]
@@ -139,6 +139,6 @@ with DAG(
 
     cfg = sanity_check_config()
     done = glue_step
-    verification = verify_silver_outputs()
+    verification = verify_silver_outputs(cfg)
 
     cfg >> done >> verification
