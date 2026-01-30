@@ -4,7 +4,6 @@ from pyspark.sql import types as T
 
 
 def _empty_df(spark: SparkSession):
-    """Return valid empty DataFrame with empty schema."""
     return spark.createDataFrame(
         spark.sparkContext.emptyRDD(),
         T.StructType([])
@@ -12,7 +11,7 @@ def _empty_df(spark: SparkSession):
 
 
 # -------------------------------------------------------------------
-# Distributed-safe limited failure readers
+# Distributed-safe readers
 # -------------------------------------------------------------------
 def _read_parquet_if_exists(spark: SparkSession, path: str) -> DataFrame:
     try:
@@ -57,7 +56,10 @@ def _read_csv_if_exists(spark: SparkSession, path: str) -> DataFrame:
 
 def _read_gz_if_exists(spark: SparkSession, path: str) -> DataFrame:
     try:
-        if any(x in path.lower() for x in ["json", "ndjson"]):
+        path_l = path.lower()
+
+        # JSON / NDJSON GZ
+        if any(x in path_l for x in ["json", "ndjson"]):
             return (
                 spark.read
                     .option("multiLine", False)
@@ -66,6 +68,16 @@ def _read_gz_if_exists(spark: SparkSession, path: str) -> DataFrame:
                     .json(f"{path}/*.gz")
             )
 
+        # TXT.GZ
+        if "txt" in path_l:
+            return (
+                spark.read
+                    .option("inferSchema", True)
+                    .option("header", False)
+                    .csv(f"{path}/*.gz")
+            )
+
+        # CSV.GZ (default)
         return (
             spark.read
                 .option("header", True)
@@ -76,23 +88,26 @@ def _read_gz_if_exists(spark: SparkSession, path: str) -> DataFrame:
     except Exception:
         return _empty_df(spark)
 
-
 def _read_txt_if_exists(spark: SparkSession, path: str) -> DataFrame:
     try:
-        if "json" in path.lower():
+        path_l = path.lower()
+
+        # JSON lines stored as txt / txt.gz
+        if "json" in path_l or "ndjson" in path_l:
             return (
                 spark.read
                     .option("multiLine", False)
                     .option("mode", "PERMISSIVE")
                     .option("badRecordsPath", f"{path}/_quarantine")
-                    .json(f"{path}/*.txt")
+                    .json(f"{path}/*.txt*")
             )
 
+        # CSV-style text (txt / csv / gz)
         return (
             spark.read
+                .option("header", True)
                 .option("inferSchema", True)
-                .option("header", False)
-                .csv(f"{path}/*.txt")
+                .csv(f"{path}/*.txt*")
         )
 
     except Exception:
@@ -139,7 +154,7 @@ from utils.schema_normalizer import SCHEMAS, dict_to_structtype
 def load_bronze_data(spark: SparkSession, bronze_path: str):
     dataset_name = bronze_path.split("/")[-1]
 
-    schema_dict = SCHEMAS.get(dataset_name, None)
+    schema_dict = SCHEMAS.get(dataset_name)
     schema_struct = dict_to_structtype(schema_dict) if schema_dict else None
 
     parquet_df = _read_parquet_if_exists(spark, bronze_path)
@@ -172,25 +187,13 @@ def load_bronze_data(spark: SparkSession, bronze_path: str):
     ])
 
     if schema_struct:
-
-        def cast_to_schema(df: DataFrame, schema_struct: T.StructType) -> DataFrame:
-            exprs = []
-            for f in schema_struct.fields:
-                if f.name in df.columns:
-                    exprs.append(F.col(f.name).cast(f.dataType).alias(f.name))
-                else:
-                    exprs.append(F.lit(None).cast(f.dataType).alias(f.name))
-            return df.select(*exprs)
-
-        actual_cols = df.columns
-        expected_cols = [f.name for f in schema_struct.fields]
-
-        missing = [c for c in expected_cols if c not in actual_cols]
-        extra = [c for c in actual_cols if c not in expected_cols]
-
-        print(f"[BRONZE] missing={missing}, extra={len(extra)}")
-
-        df = cast_to_schema(df, schema_struct)
+        exprs = []
+        for f in schema_struct.fields:
+            if f.name in df.columns:
+                exprs.append(F.col(f.name).cast(f.dataType).alias(f.name))
+            else:
+                exprs.append(F.lit(None).cast(f.dataType).alias(f.name))
+        df = df.select(*exprs)
 
     return df
 
@@ -211,8 +214,7 @@ def load_silver_data(spark: SparkSession, silver_path: str):
     if "id" in df.columns:
         df = df.drop("id")
 
-    path_lower = silver_path.lower()
-    if "transaction" in path_lower and "tx_id" not in df.columns:
+    if "transaction" in silver_path.lower() and "tx_id" not in df.columns:
         df = df.withColumn("tx_id", F.col("user_id"))
 
     return df
