@@ -1,206 +1,265 @@
-## 6. Silver → Gold Glue Job (Deep Dive)
-Dimensional modeling, fact table engineering, stable schema enforcement, and business-ready marts.  
-This is the layer where pipeline becomes analytics-grade.  
-Silver → Gold is what converts cleaned operational data into facts, dims, and marts that BI tools and analysts use.
+# 6. Silver → Gold Glue Job (Deep Dive)
+
+**Dimensional modeling, fact engineering, schema stability, and analytics-ready marts**
+
+The Silver → Gold Glue job is the core business logic layer of the pipeline.  
+It converts cleaned and normalized Silver data into analytics-grade dimensional models, fact tables, and business marts consumed by BI tools and downstream systems.
+
+This layer mirrors how real-world production data warehouses are designed and operated.
 
 ---
 
-### 6.1 Purpose of the Silver → Gold Job
-This Glue job:
-- Joins cleaned Silver tables
-- Builds dimensional models
-- Builds fact tables for events & transactions
-- Builds business metrics & aggregations (marts)
-- Enforces stable schemas for downstream BI
-- Handles timestamp cleanup, numeric casting, SCD behavior
-- Guarantees partitioned, optimized output
+## 6.1 Purpose of the Silver → Gold Job
 
-This is core business logic layer.
+This Glue Spark job performs the following responsibilities:
 
----
+- Reads cleaned Silver datasets
+- Builds dimensional tables (DIM)
+- Builds transactional and behavioral fact tables (FACT)
+- Builds aggregated business metrics (MART)
+- Enforces stable, deterministic schemas for BI and Redshift
+- Sanitizes timestamps and numeric fields
+- Applies optimized join strategies and execution settings
+- Produces analytics-ready, schema-safe Gold outputs
 
-### 6.2 Gold Model Structure
-Gold layer has three zones:
-
-**DIM tables**
-- dim_users
-- dim_country
-- dim_status
-- dim_date
-
-**FACT tables**
-- fact_events
-- fact_transactions
-- fact_user_activity
-
-**MART tables**
-- daily_revenue
-- daily_active_users
-- user_ltv
-
-This mirrors real e-commerce analytical warehouses.
+This is the layer where the pipeline becomes analytics-grade.
 
 ---
 
-### 6.3 Loading the Silver Inputs
-The job reads Silver using:
-events = spark.read.parquet(f"{SILVER_BASE}/events")  
-users = spark.read.parquet(f"{SILVER_BASE}/users")  
+## 6.2 Gold Layer Model Structure
+
+The Gold layer is logically divided into three zones:
+
+### DIM Tables
+- dim_users  
+- dim_country  
+- dim_status  
+- dim_date  
+
+### FACT Tables
+- fact_events  
+- fact_transactions  
+- fact_user_activity  
+
+### MART Tables
+- daily_revenue  
+- daily_active_users  
+- user_ltv  
+
+This structure mirrors real e-commerce analytical warehouses.
+
+---
+
+## 6.3 Loading and Validating Silver Inputs
+
+Silver data is loaded directly from S3:
+
+```python
+events = spark.read.parquet(f"{SILVER_BASE}/events")
+users = spark.read.parquet(f"{SILVER_BASE}/users")
 transactions = spark.read.parquet(f"{SILVER_BASE}/transactions")
+```
 
-Before transformation:
-- Void/unknown types sanitized  
-  Many real datasets produce “void” type columns.  
-  The code replaces them with string(null) columns to stabilize schema.
-- DQ check for event_id  
-  This ensures events table integrity before building facts.
+### Pre-Transformation Safeguards
 
----
+Before any modeling:
 
-### 6.4 Dimensional Tables (DIMs)
+* Void or unknown Spark column types are sanitized  
+  Columns with `void` type are replaced with `string(null)` to stabilize schemas.
 
-**dim_users**
-- SCD Type-1 (from Bronze → Silver step)
-- Kept at one record per user_id
-- Includes: name, city, email, phone, age, updated_at
+* Data quality validation on `event_id`  
+  A not-null check ensures event integrity before fact generation.
 
-**dim_country**
-- Extracted as unique list of countries from events
-
-**dim_status**
-- Unique statuses from transactions
-
-**dim_date**
-A comprehensive date dimension generated from both events and transactions:
-- date
-- year
-- month
-- day
-- day_of_week
-- week_of_year
-- month_name
-
-This table is essential for BI calendar filtering.
+These safeguards prevent downstream schema breakage.
 
 ---
 
-### 6.5 Fact Tables (FACTs)
+## 6.4 Dimensional Tables (DIM)
 
-**fact_events**
-Combines:
-- event fields
-- broadcast-joined user attributes
-- strong timestamp sanitation
-- stable schema enforcement via:
-spark.createDataFrame(fact_events.rdd, GOLD_FACT_EVENTS_SCHEMA)
+### dim_users
 
-This enforces:
-- event_id
-- user_id
-- ts (timestamp)
-- event_date
-- country
-- user_city
-- user_age
-- user_email
+* One record per user_id
+* SCD Type-1 behavior already resolved in Bronze → Silver
+* Fields:
+  * user_id
+  * name
+  * email
+  * city
+  * phone
+  * age
+  * updated_at
 
-Why this is enterprise-grade:  
-Stable schemas prevent BI tools from breaking due to:
-- missing fields
-- type drift
-- inconsistent null behavior
+### dim_country
 
----
+* Unique list of countries derived from events
 
-**fact_transactions**
-Similar approach:
-- Join transactions + user profile
-- Sanitize timestamps
-- Cast numerics properly
-- Generate tx_date
-- Apply FACT_TX_SCHEMA for consistency
+### dim_status
 
-This is mandatory for Redshift downstream ingestion.
+* Unique transaction statuses
 
----
+### dim_date
 
-**fact_user_activity**
-A daily aggregations fact:
-- events_count per user per day
-- transactions_count
-- total_revenue
-- avg_transaction_amount
+A full calendar dimension generated from both events and transactions:
 
-This is a key behavior analytics table.
+* date
+* year
+* month
+* day
+* day_of_week
+* week_of_year
+* month_name
 
----
+This enables proper time-based analysis in BI tools.
 
-### 6.6 Business Aggregation Marts (MARTs)
+---r
 
-**daily_revenue**
-Aggregates:
-- total revenue
-- transaction count
-- delivered order count
-- average order value
+## 6.5 Fact Tables (FACT)
 
-Strict schema enforced via DAILY_REVENUE_SCHEMA.
+### fact_events
 
----
+Built by joining:
 
-**daily_active_users**
-Union of:
-- event-active users
-- transaction-active users
+* Event-level activity
+* User attributes via broadcast join
 
-Builds:
-- event_active_users
-- tx_active_users
-- total_active_users
+Key characteristics:
+
+* Strong timestamp sanitation
+* Explicit column selection
+* Stable schema enforcement
+* Event-level granularity
+
+Schema enforced:
+
+* event_id
+* user_id
+* ts
+* event_date
+* country
+* user_city
+* user_age
+* user_email
+
+Stable schemas prevent BI tools from breaking due to drift.
 
 ---
 
-**user_ltv**
-Lifetime Value table built from:
-- first event
-- last event
-- transaction totals
+### fact_transactions
 
-This is a critical BI metric.
+Built by joining:
 
----
+* Transactions
+* User attributes
 
-### 6.7 Stable Schema Enforcement
-Every Gold fact/dim/mart uses:
-spark.createDataFrame(df.rdd, <SCHEMA>)
+Features:
 
-This enforces:
-- Correct column ordering
-- Correct data types
-- Required BI compatibility
-- 100% schema consistency across partitions and runs
+* Numeric casting for monetary fields
+* Timestamp sanitation
+* Derived tx_date
+* Explicit schema enforcement
 
-This is the hallmark of a production-star, enterprise-grade data warehouse.
+This table is Redshift-ready and supports revenue and order analytics.
 
 ---
 
-### 6.8 Performance Engineering
-The job includes:
-- Broadcast joins for dimension lookups
-- Coalesce before writing to reduce file counts
-- PartitionOverwriteMode = dynamic
-- Adaptive execution enabled
+### fact_user_activity
 
-These reduce cost and speed up Glue execution.
+Daily user-level behavioral fact table:
+
+* events_count
+* transactions_count
+* total_revenue
+* avg_transaction_amount
+
+Used for engagement and retention analysis.
 
 ---
 
-### 6.9 Output Guarantees
-Gold output is:
-- Strictly typed
-- Partitioned appropriately
-- BI-ready
-- Redshift-ready
-- Schema-stable
+## 6.6 Business Aggregation Marts (MART)
 
-This ensures that downstream systems don’t break due to drift.
+### daily_revenue
+
+Daily revenue metrics:
+
+* transaction_count
+* total_revenue
+* avg_amount
+* delivered_count
+
+Schema enforced for BI compatibility.
+
+---
+
+### daily_active_users
+
+Computed using:
+
+* Event activity
+* Transaction activity
+* Union + deduplication
+
+Outputs:
+
+* event_active_users
+* tx_active_users
+* total_active_users
+
+---
+
+### user_ltv
+
+Lifetime value metrics per user:
+
+* first_event
+* last_event
+* total revenue (LTV)
+
+Critical for customer analytics.
+
+---
+
+## 6.7 Stable Schema Enforcement Strategy
+
+All Gold facts and marts use explicit schema enforcement.
+
+Strategy:
+
+* DF-first casting for performance
+* RDD fallback for malformed input
+
+This guarantees:
+
+* Correct column ordering
+* Correct data types
+* BI and Redshift compatibility
+* Zero schema drift across runs
+
+This is a core enterprise-grade design principle.
+
+---
+
+## 6.8 Performance Engineering
+
+The job is optimized using:
+
+* Broadcast joins for dimension lookups
+* Adaptive Query Execution (AQE)
+* Skew join handling
+* Dynamic partition overwrite mode
+* Controlled file counts via selective coalescing
+
+These optimizations reduce cost and improve Glue stability.
+
+---
+
+## 6.9 Output Guarantees
+
+Gold outputs are:
+
+* Strictly typed
+* Schema-stable
+* Analytics-ready
+* BI-safe
+* Redshift-compatible
+
+Downstream systems never break due to schema drift.
