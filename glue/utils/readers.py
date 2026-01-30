@@ -56,10 +56,6 @@ def _read_csv_if_exists(spark: SparkSession, path: str) -> DataFrame:
 
 
 def _read_gz_if_exists(spark: SparkSession, path: str) -> DataFrame:
-    """
-    Safe GZ reader without collect().
-    Assumes format from file extension naming convention.
-    """
     try:
         if any(x in path.lower() for x in ["json", "ndjson"]):
             return (
@@ -82,9 +78,6 @@ def _read_gz_if_exists(spark: SparkSession, path: str) -> DataFrame:
 
 
 def _read_txt_if_exists(spark: SparkSession, path: str) -> DataFrame:
-    """
-    TXT reader without driver-side inspection.
-    """
     try:
         if "json" in path.lower():
             return (
