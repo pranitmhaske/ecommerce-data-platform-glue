@@ -3,7 +3,10 @@ from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
 
-def _empty_df(spark: SparkSession):
+# -------------------------------------------------------------------
+# Helper: empty DataFrame
+# -------------------------------------------------------------------
+def _empty_df(spark: SparkSession) -> DataFrame:
     return spark.createDataFrame(
         spark.sparkContext.emptyRDD(),
         T.StructType([])
@@ -11,11 +14,11 @@ def _empty_df(spark: SparkSession):
 
 
 # -------------------------------------------------------------------
-# Distributed-safe readers
+# Distributed-safe readers (NO driver inspection)
 # -------------------------------------------------------------------
 def _read_parquet_if_exists(spark: SparkSession, path: str) -> DataFrame:
     try:
-        return spark.read.parquet(f"{path}/*")
+        return spark.read.parquet(f"{path}/*.parquet")
     except Exception:
         return _empty_df(spark)
 
@@ -27,19 +30,13 @@ def _read_json_if_exists(spark: SparkSession, path: str) -> DataFrame:
                 .option("multiLine", False)
                 .option("mode", "PERMISSIVE")
                 .option("badRecordsPath", f"{path}/_quarantine")
-                .json(f"{path}/*.json")
+                .json(
+                    f"{path}/*.json",
+                    f"{path}/*.ndjson"
+                )
         )
     except Exception:
-        try:
-            return (
-                spark.read
-                    .option("multiLine", False)
-                    .option("mode", "PERMISSIVE")
-                    .option("badRecordsPath", f"{path}/_quarantine")
-                    .json(f"{path}/*.ndjson")
-            )
-        except Exception:
-            return _empty_df(spark)
+        return _empty_df(spark)
 
 
 def _read_csv_if_exists(spark: SparkSession, path: str) -> DataFrame:
@@ -56,58 +53,59 @@ def _read_csv_if_exists(spark: SparkSession, path: str) -> DataFrame:
 
 def _read_gz_if_exists(spark: SparkSession, path: str) -> DataFrame:
     try:
-        path_l = path.lower()
-
         # JSON / NDJSON GZ
-        if any(x in path_l for x in ["json", "ndjson"]):
+        try:
             return (
                 spark.read
                     .option("multiLine", False)
                     .option("mode", "PERMISSIVE")
                     .option("badRecordsPath", f"{path}/_quarantine")
-                    .json(f"{path}/*.gz")
+                    .json(
+                        f"{path}/*.json.gz",
+                        f"{path}/*.ndjson.gz"
+                    )
             )
+        except Exception:
+            pass
 
-        # TXT.GZ
-        if "txt" in path_l:
-            return (
-                spark.read
-                    .option("inferSchema", True)
-                    .option("header", False)
-                    .csv(f"{path}/*.gz")
-            )
-
-        # CSV.GZ (default)
+        # CSV / TXT GZ (NO header assumption)
         return (
             spark.read
-                .option("header", True)
+                .option("header", False)
                 .option("inferSchema", True)
-                .csv(f"{path}/*.gz")
+                .csv(
+                    f"{path}/*.csv.gz",
+                    f"{path}/*.txt.gz"
+                )
         )
 
     except Exception:
         return _empty_df(spark)
 
+
 def _read_txt_if_exists(spark: SparkSession, path: str) -> DataFrame:
     try:
-        path_l = path.lower()
-
-        # JSON lines stored as txt / txt.gz
-        if "json" in path_l or "ndjson" in path_l:
+        # JSON lines in txt
+        try:
             return (
                 spark.read
                     .option("multiLine", False)
                     .option("mode", "PERMISSIVE")
                     .option("badRecordsPath", f"{path}/_quarantine")
-                    .json(f"{path}/*.txt*")
+                    .json(
+                        f"{path}/*.json.txt",
+                        f"{path}/*.ndjson.txt"
+                    )
             )
+        except Exception:
+            pass
 
-        # CSV-style text (txt / csv / gz)
+        # Plain text / CSV-like TXT (NO header)
         return (
             spark.read
-                .option("header", True)
+                .option("header", False)
                 .option("inferSchema", True)
-                .csv(f"{path}/*.txt*")
+                .csv(f"{path}/*.txt")
         )
 
     except Exception:
@@ -150,19 +148,20 @@ def union_preserve_schema(dfs):
 # -------------------------------------------------------------------
 from utils.schema_normalizer import SCHEMAS, dict_to_structtype
 
-
 def load_bronze_data(spark: SparkSession, bronze_path: str):
     dataset_name = bronze_path.split("/")[-1]
 
-    schema_dict = SCHEMAS.get(dataset_name)
+    schema_dict = SCHEMAS.get(dataset_name, None)
     schema_struct = dict_to_structtype(schema_dict) if schema_dict else None
 
+    # --- READ ALL FORMATS ---
     parquet_df = _read_parquet_if_exists(spark, bronze_path)
     json_df    = _read_json_if_exists(spark, bronze_path)
     csv_df     = _read_csv_if_exists(spark, bronze_path)
     gz_df      = _read_gz_if_exists(spark, bronze_path)
     txt_df     = _read_txt_if_exists(spark, bronze_path)
 
+    # Column normalization
     def normalize_columns(df: DataFrame) -> DataFrame:
         return df.toDF(*[
             c.replace("`", "")
@@ -178,6 +177,7 @@ def load_bronze_data(spark: SparkSession, bronze_path: str):
     gz_df      = normalize_columns(gz_df)
     txt_df     = normalize_columns(txt_df)
 
+    # Merge all DF formats
     df = union_preserve_schema([
         parquet_df,
         json_df,
@@ -186,14 +186,32 @@ def load_bronze_data(spark: SparkSession, bronze_path: str):
         txt_df,
     ])
 
+    # ---------------------------
+    # SAFE CAST → canonical schema
+    # ---------------------------
     if schema_struct:
-        exprs = []
-        for f in schema_struct.fields:
-            if f.name in df.columns:
-                exprs.append(F.col(f.name).cast(f.dataType).alias(f.name))
-            else:
-                exprs.append(F.lit(None).cast(f.dataType).alias(f.name))
-        df = df.select(*exprs)
+
+        def cast_to_schema(df: DataFrame, schema_struct: T.StructType) -> DataFrame:
+            target_fields = [(f.name, f.dataType) for f in schema_struct.fields]
+
+            exprs = []
+            for name, dtype in target_fields:
+                if name in df.columns:
+                    exprs.append(F.col(name).cast(dtype).alias(name))
+                else:
+                    exprs.append(F.lit(None).cast(dtype).alias(name))
+
+            return df.select(*exprs)
+
+        # debug logging
+        actual_cols = df.columns
+        expected_cols = [f.name for f in schema_struct.fields]
+        missing = [c for c in expected_cols if c not in actual_cols]
+        extra = [c for c in actual_cols if c not in expected_cols]
+
+        print(f"[BRONZE] missing={missing}, extra={len(extra)}")
+
+        df = cast_to_schema(df, schema_struct)
 
     return df
 
@@ -203,18 +221,20 @@ def load_bronze_data(spark: SparkSession, bronze_path: str):
 # -------------------------------------------------------------------
 def load_silver_data(spark: SparkSession, silver_path: str):
     parquet_df = _read_parquet_if_exists(spark, silver_path)
-    json_df    = _read_json_if_exists(spark, silver_path)
-    csv_df     = _read_csv_if_exists(spark, silver_path)
+    json_df = _read_json_if_exists(spark, silver_path)
+    csv_df = _read_csv_if_exists(spark, silver_path)
 
     df = union_preserve_schema([parquet_df, json_df, csv_df])
 
+    # Normalize ID columns
     if "id" in df.columns and "user_id" not in df.columns:
         df = df.withColumn("user_id", F.col("id"))
 
     if "id" in df.columns:
         df = df.drop("id")
 
-    if "transaction" in silver_path.lower() and "tx_id" not in df.columns:
+    path_lower = silver_path.lower()
+    if "transaction" in path_lower and "tx_id" not in df.columns:
         df = df.withColumn("tx_id", F.col("user_id"))
 
     return df
