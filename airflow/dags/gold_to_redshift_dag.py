@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.decorators import task
 from airflow.exceptions import AirflowFailException
-from airflow.providers.amazon.aws.sensors.s3 import S3PrefixSensor
+from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 
 # ========================
 # CONFIG
@@ -147,62 +147,65 @@ with DAG(
     default_args=default_args,
 ) as dag:
 
+    # ---------- CREATE TABLES ----------
     @task
     def create_tables():
         run_sql_and_wait(CREATE_TABLES_SQL)
 
-    wait_for_s3 = S3PrefixSensor.partial(
+    # ---------- WAIT FOR GOLD OUTPUTS ----------
+    wait_for_s3 = S3KeySensor.partial(
         aws_conn_id="aws_default",
         bucket_name=S3_GOLD_BUCKET,
         poke_interval=30,
         timeout=60 * 60,
         mode="reschedule",
     ).expand(
-        task_id=[f"wait_{t['table']}_s3" for t in TABLES],
-        prefix=[t["prefix"] for t in TABLES],
+        task_id=[f"wait_{t['table']}_success" for t in TABLES],
+        bucket_key=[f"{t['prefix']}_SUCCESS" for t in TABLES],
     )
 
+    # ---------- LOAD TABLE ----------
     @task
     def load_table(table_cfg: dict):
         table = table_cfg["table"]
         prefix = table_cfg["prefix"]
 
-        run_sql_and_wait(f"TRUNCATE TABLE ecommerce_gold.{table};")
-
         run_sql_and_wait(f"""
-            COPY ecommerce_gold.{table}
-            FROM 's3://{S3_GOLD_BUCKET}/{prefix}'
-            IAM_ROLE '{IAM_COPY_ROLE}'
-            FORMAT PARQUET
-            REGION '{REGION}';
+        TRUNCATE TABLE ecommerce_gold.{table};
+
+        COPY ecommerce_gold.{table}
+        FROM 's3://{S3_GOLD_BUCKET}/{prefix}'
+        IAM_ROLE '{IAM_COPY_ROLE}'
+        FORMAT PARQUET
+        REGION '{REGION}';
         """)
 
         return table
 
+    # ---------- VALIDATE TABLE ----------
     @task
-    def validate_tables(tables: list):
-        for table in tables:
-            resp = rs.execute_statement(
-                WorkgroupName=REDSHIFT_WORKGROUP,
-                Database=REDSHIFT_DB,
-                SecretArn=REDSHIFT_SECRET_ARN,
-                Sql=f"SELECT COUNT(*) FROM ecommerce_gold.{table};",
-            )
-            stmt_id = resp["Id"]
+    def validate_table(table: str):
+        resp = rs.execute_statement(
+            WorkgroupName=REDSHIFT_WORKGROUP,
+            Database=REDSHIFT_DB,
+            SecretArn=REDSHIFT_SECRET_ARN,
+            Sql=f"SELECT COUNT(*) FROM ecommerce_gold.{table};",
+        )
+        stmt_id = resp["Id"]
 
-            while True:
-                desc = rs.describe_statement(Id=stmt_id)
-                if desc["Status"] == "FINISHED":
-                    break
-                if desc["Status"] in ("FAILED", "ABORTED"):
-                    raise AirflowFailException(f"Validation failed for {table}")
-                time.sleep(2)
+        while True:
+            desc = rs.describe_statement(Id=stmt_id)
+            if desc["Status"] == "FINISHED":
+                break
+            if desc["Status"] in ("FAILED", "ABORTED"):
+                raise AirflowFailException(f"Validation failed for {table}")
+            time.sleep(2)
 
-            rows = rs.get_statement_result(Id=stmt_id)["Records"]
-            count = int(rows[0][0]["longValue"])
+        rows = rs.get_statement_result(Id=stmt_id)["Records"]
+        count = int(rows[0][0]["longValue"])
 
-            if count == 0:
-                raise AirflowFailException(f"{table} has ZERO rows")
+        if count == 0:
+            raise AirflowFailException(f"{table} has ZERO rows")
 
     # ========================
     # FLOW
@@ -215,4 +218,6 @@ with DAG(
         table_cfg=TABLES,
     )
 
-    wait_for_s3 >> loaded >> validate_tables(loaded)
+    wait_for_s3 >> loaded
+
+    loaded >> validate_table.expand(table=loaded)
