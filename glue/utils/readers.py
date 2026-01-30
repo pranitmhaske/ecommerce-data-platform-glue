@@ -14,7 +14,7 @@ def _empty_df(spark: SparkSession) -> DataFrame:
 
 
 # -------------------------------------------------------------------
-# Distributed-safe readers (NO driver inspection)
+# Distributed-safe readers
 # -------------------------------------------------------------------
 def _read_parquet_if_exists(spark: SparkSession, path: str) -> DataFrame:
     try:
