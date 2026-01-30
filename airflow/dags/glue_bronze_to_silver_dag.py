@@ -253,7 +253,7 @@ with DAG(
         stats = {}
 
         for dom in DOMAINS:
-            dom_prefix = f"{silver_prefix}/{dom}/event_date="
+            dom_prefix = f"{dom}/event_date="
             resp = s3.list_objects_v2(Bucket=bucket, Prefix=dom_prefix, MaxKeys=1)
             count = resp.get("KeyCount", 0)
             stats[dom] = int(count)
