@@ -107,7 +107,7 @@ with DAG(
 
     # ---------------------- 3. Verify Gold outputs exist ---------------------- #
     @task()
-    def verify_gold_outputs():
+    def verify_gold_outputs(prev:dict):
         s3 = _get_s3_client()
 
         def _split_s3(url: str):
@@ -144,6 +144,6 @@ with DAG(
 
     cfg = sanity_check_config()
     done = glue_step
-    verification = verify_gold_outputs()
+    verification = verify_gold_outputs(cfg)
 
     cfg >> done >> verification
