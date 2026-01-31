@@ -8,9 +8,11 @@ This project follows Medallion Architecture Bronze, Silver, and Gold layers and 
 
 <img src="docs/architecture/full_architecture.drawio.png" width="250"/>
 
-**Raw Ingestion**: This validates files for format and corrupt files and ensures bad data does not break downstream processing
+---
+
+**Raw Ingestion**: This validates files for format and corrupt files and ensures bad data does not break downstream processing.
 **Bronze layer**: Stores still raw but validated data.
-**Silver layer**: This is where transformation is applied: cleansing, standardization, and normalization processes to prepare data for analysis
+**Silver layer**: This is where transformation is applied: cleansing, standardization, and normalization processes to prepare data for analysis.
 **Gold layer**: This layer houses business-ready data modeled into a star schema required for reporting and analytics
 
 ---
