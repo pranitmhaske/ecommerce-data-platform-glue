@@ -1,21 +1,13 @@
 import sys
+from pyspark import StorageLevel
 
-# =====================================================================
-# GLUE IMPORTS
-# =====================================================================
 from awsglue.context import GlueContext
 from awsglue.job import Job
 from awsglue.utils import getResolvedOptions
 from pyspark.context import SparkContext
 
-# =====================================================================
-# PYSPARK IMPORTS
-# =====================================================================
 from pyspark.sql import functions as F
 
-# =====================================================================
-# CUSTOM UTILS (CENTRALIZED LOGIC)
-# =====================================================================
 from utils.readers import load_bronze_data
 from utils.schema_normalizer import normalize_schema, SCHEMAS as DATASET_SCHEMAS
 from utils.cleaners import clean_columns
@@ -25,9 +17,8 @@ from utils.quarantine import quarantine_rows, sanitize_void_columns
 from utils.validator import validate
 from utils.scd_merge import merge_user_history
 from utils.logger import get_logger
-# =====================================================================
-# GLUE ARGUMENTS 
-# =====================================================================
+
+# GLUE ARGUMENTS
 args = getResolvedOptions(
     sys.argv,
     ["bronze_path", "silver_path", "quarantine_path", "metrics_path", "JOB_NAME"]
@@ -37,12 +28,8 @@ bronze_base = args["bronze_path"]
 silver_base = args["silver_path"]
 quarantine_base = args["quarantine_path"]
 metrics_base = args["metrics_path"]
-job_name = args["JOB_NAME"]
 
-
-# =====================================================================
-# SPARK / GLUE SESSION BUILDER
-# =====================================================================
+# SPARK / GLUE SESSION
 def create_spark_session(app_name="bronze_to_silver"):
     sc = SparkContext.getOrCreate()
     glueContext = GlueContext(sc)
@@ -57,147 +44,122 @@ def create_spark_session(app_name="bronze_to_silver"):
 
     return spark, glueContext
 
-# =====================================================================
-# STRICT PIPELINE STOPPER
-# =====================================================================
-def assert_non_empty(df, step_name, dataset_name):
-    if df is None or df.count() == 0:
+# EMPTY CHECK 
+def assert_non_empty_fast(df, step, dataset):
+    if not df.take(1):
         raise RuntimeError(
-            f"STRICT_FAIL: step `{step_name}` produced 0 rows for dataset '{dataset_name}'"
+            f"STRICT_FAIL: `{step}` produced 0 rows for dataset '{dataset}'"
         )
     return df
 
-# =====================================================================
 # EVENT DATE LOGIC
-# =====================================================================
 def add_event_date(df):
     if "ts" in df.columns:
         return df.withColumn("event_date", F.to_date("ts"))
-    elif "event_timestamp" in df.columns:
+    if "event_timestamp" in df.columns:
         return df.withColumn("event_date", F.to_date("event_timestamp"))
-    elif "updated_at" in df.columns:
+    if "updated_at" in df.columns:
         return df.withColumn("event_date", F.to_date("updated_at"))
-    elif "created_at" in df.columns:
+    if "created_at" in df.columns:
         return df.withColumn("event_date", F.to_date("created_at"))
     return df.withColumn("event_date", F.current_date())
 
-# =====================================================================
-# MAIN DATASET PROCESSOR
-# =====================================================================
+# DATASET PROCESSOR
 def process_dataset(spark, dataset_name, bronze_path, silver_path, quarantine_base, metrics_base):
     print("\n=================================================")
     print(f" PROCESSING DATASET → {dataset_name.upper()}")
-    print(f"BRONZE INPUT  → {bronze_path}")
-    print(f"SILVER OUTPUT → {silver_path}")
     print("=================================================\n")
 
-    # 1) load bronze
+    # 1) Load bronze (hard stop)
     df = load_bronze_data(spark, bronze_path)
-    df = assert_non_empty(df, "load_bronze_data", dataset_name)
+    assert_non_empty_fast(df, "load_bronze_data", dataset_name)
 
-    # 2) normalize schema + handle drift
+    # 2) Normalize schema
     df, _ = normalize_schema(df, dataset_name, allow_quarantine=True)
-    df = assert_non_empty(df, "normalize_schema", dataset_name)
 
-    # 3) clean columns
+    # 3) Clean
     df = clean_columns(df, dataset_name)
 
-    # 4) add event_date early to prevent missing partitions
+    # 4) Add event_date early
     df = add_event_date(df)
 
-    # 5) strict check for empty outputs
-    try:
-        df = assert_non_empty(df, "clean_columns", dataset_name)
-    except:
-        print("WARN: corrupt rows detected, quarantining whole file")
-        return
-
-    # 6) dedupe
+    # 5) Dedupe
     df = dedupe(df, dataset_name)
-    df = assert_non_empty(df, "dedupe", dataset_name)
 
-    # 7) quarantine bad rows
+    # 6) Quarantine
     quarantine_path = f"{quarantine_base}/{dataset_name}"
     good, bad = quarantine_rows(df, dataset_name, quarantine_path)
-    print("Quarantine -> good:", good.count(), "| bad:", 0 if bad is None else bad.count())
 
-    # 8) only good rows move forward
-    df = assert_non_empty(good, "quarantine_filtering", dataset_name)
+    # 7) Persist GOOD rows only
+    good = good.persist(StorageLevel.MEMORY_AND_DISK)
+    assert_non_empty_fast(good, "post_quarantine", dataset_name)
 
-    # 9) SCD merge for users only
+    # 8) SCD merge (users only)
     if dataset_name == "users":
-        df = merge_user_history(df)
-        df = df.withColumn("event_date", F.to_date("updated_at"))
-        df = sanitize_void_columns(df)
+        good = merge_user_history(good)
+        good = good.withColumn("event_date", F.to_date("updated_at"))
+        good = sanitize_void_columns(good)
 
-    df = assert_non_empty(df, "scd_merge", dataset_name)
-
-    # 10) run DQ validation
+    # 9) DQ validation
     metrics_path = f"{metrics_base}/{dataset_name}"
-    df = validate(df, spark, dataset_name, metrics_path)
+    good = validate(good, spark, dataset_name, metrics_path)
 
-    # 11) schema lock + enforce event_date always exists
-    print("SCHEMA BEFORE SELECT():")
-    df.printSchema()
+    # 10) Schema lock
+    expected_cols = DATASET_SCHEMAS.get(dataset_name, [])
 
-    expected = DATASET_SCHEMAS.get(dataset_name, [])
-    for col in expected:
-        if col not in df.columns:
-            df = df.withColumn(col, F.lit(None).cast("string"))
+    for col in expected_cols:
+        if col not in good.columns:
+            good = good.withColumn(col, F.lit(None).cast("string"))
 
-    # prevent Spark from dropping
-    df = df.withColumn(
+    good = good.withColumn(
         "event_date",
         F.coalesce(F.col("event_date"), F.lit("1900-01-01")).cast("date")
     )
 
-    # 12) final schema apply in fixed order
-    df = df.select(*expected, "event_date")
-    df = assert_non_empty(df, "schema_lock", dataset_name)
+    good = good.select(*expected_cols, "event_date")
 
-    # 13) cast all to string except event_date
-    for c in expected:
-        df = df.withColumn(c, F.col(c).cast("string"))
+    # 11) Cast all except event_date
+    for c in expected_cols:
+        good = good.withColumn(c, F.col(c).cast("string"))
 
-    # 14) repartition by event_date to ensure all files contain event_date
-    df = df.repartition(50, "event_date")
+    # 12) Repartition by event_date
+    good = good.repartition(50, "event_date")
 
-    # 15) write silver output to S3
-    write_silver_output(df, silver_path)
+    # 13) Write silver
+    write_silver_output(good, silver_path)
 
-    print(f"COMPLETED DATASET: {dataset_name}\n")
+    print(f"COMPLETED DATASET → {dataset_name}")
 
-# =====================================================================
 # MAIN
-# =====================================================================
 def main():
-    print("################  SILVER TRANSFORMATION STARTED  ################")
-
     spark, glueContext = create_spark_session()
     logger = get_logger("bronze_to_silver")
 
-    # ===== Glue Job Init =====
-    job_name = args["JOB_NAME"]
     job = Job(glueContext)
-    job.init(job_name, args)
+    job.init(args["JOB_NAME"], args)
 
     datasets = ["events", "transactions", "users"]
 
     try:
         for ds in datasets:
-            bronze_path = f"{bronze_base}/{ds}"
-            silver_path = f"{silver_base}/{ds}"
-
             process_dataset(
-                spark, ds, bronze_path, silver_path, quarantine_base, metrics_base
+                spark,
+                ds,
+                f"{bronze_base}/{ds}",
+                f"{silver_base}/{ds}",
+                quarantine_base,
+                metrics_base,
             )
 
     except Exception as e:
-        logger.error(f"\n STRICT PIPELINE ERROR → {e}")
+        logger.error(f"STRICT PIPELINE FAILURE → {e}")
         spark.stop()
         sys.exit(1)
 
-    # ===== Glue Job Commit =====
     job.commit()
     spark.stop()
-    print("################  ALL DATASETS PROCESSED  ################\n")
+    print("~ALL DATASETS PROCESSED~")
+
+# ENTRYPOINT
+if __name__ == "__main__":
+    main()
