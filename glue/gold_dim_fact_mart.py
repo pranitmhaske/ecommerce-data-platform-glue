@@ -1,15 +1,10 @@
 import sys
-# ====================================================
-# GLUE IMPORTS
-# ====================================================
+
 from awsglue.context import GlueContext
 from awsglue.job import Job
 from awsglue.utils import getResolvedOptions
 from pyspark.context import SparkContext
 
-# ====================================================
-# PYSPARK IMPORTS
-# ====================================================
 from pyspark.sql import functions as F
 from pyspark.sql.functions import broadcast
 from pyspark.sql import types as T   
@@ -25,9 +20,7 @@ def safe_timestamp(col):
     ).otherwise(None)
 
 
-# ====================================================
 # DF FIRST → RDD FALLBACK
-# ====================================================
 def enforce_schema_df(df, schema):
     for field in schema.fields:
         if field.name not in df.columns:
@@ -37,9 +30,7 @@ def enforce_schema_df(df, schema):
     return df.select([f.name for f in schema.fields])
 
 
-# ====================================================
 # FIXED SCHEMAS
-# ====================================================
 GOLD_FACT_EVENTS_SCHEMA = T.StructType([
     T.StructField("event_id", T.StringType()),
     T.StructField("user_id", T.StringType()),
@@ -73,9 +64,7 @@ FACT_TX_SCHEMA = T.StructType([
 ])
 
 
-# ====================================================
 # SPARK / GLUE SESSION
-# ====================================================
 def create_spark_session(app_name="silver_to_gold"):
     sc = SparkContext.getOrCreate()
     sc.setAppName(app_name)
@@ -91,25 +80,16 @@ def create_spark_session(app_name="silver_to_gold"):
     return spark, glueContext
 
 
-# ====================================================
 # LOAD SILVER TABLES
-# ====================================================
 def load_silver_tables(spark, base_path):
     events = spark.read.parquet(f"{base_path}/events")
     users = spark.read.parquet(f"{base_path}/users")
     transactions = spark.read.parquet(f"{base_path}/transactions")
 
-    print("Loaded Silver tables:")
-    print("events:", events.count())
-    print("users:", users.count())
-    print("transactions:", transactions.count())
-
     return events, users, transactions
 
 
-# ====================================================
 # DIM TABLES
-# ====================================================
 def build_dim_users(users, output_path):
     users = users.withColumn("updated_at", F.to_timestamp("updated_at"))
     dim_users = (
@@ -118,7 +98,7 @@ def build_dim_users(users, output_path):
         ).dropDuplicates(["user_id"])
     )
     dim_users.write.mode("overwrite").parquet(f"{output_path}/dim_users")
-    print("✔ dim_users written")
+    print("dim_users written")
 
 
 def build_dim_country(events, output_path):
@@ -128,7 +108,7 @@ def build_dim_country(events, output_path):
         .dropDuplicates()
     )
     dim_country.write.mode("overwrite").parquet(f"{output_path}/dim_country")
-    print("✔ dim_country written")
+    print("dim_country written")
 
 
 def build_dim_status(transactions, output_path):
@@ -138,7 +118,7 @@ def build_dim_status(transactions, output_path):
         .dropDuplicates()
     )
     dim_status.write.mode("overwrite").parquet(f"{output_path}/dim_status")
-    print("✔ dim_status written")
+    print("dim_status written")
 
 
 def build_dim_dates(events, transactions, output_path):
@@ -157,12 +137,10 @@ def build_dim_dates(events, transactions, output_path):
     )
 
     dim_date.write.mode("overwrite").parquet(f"{output_path}/dim_date")
-    print("✔ dim_date written")
+    print("dim_date written")
 
 
-# ====================================================
 # FACT TABLES
-# ====================================================
 def build_fact_events(events, users, output_path, spark):
     users_pruned = users.select("user_id", "city", "age", "email")
     events_pruned = events.select("event_id", "user_id", "ts", "country")
@@ -205,17 +183,14 @@ def build_fact_events(events, users, output_path, spark):
         .withColumn("ts", F.to_timestamp("ts")) \
         .withColumn("event_date", F.to_date("event_date"))
 
-    try:
-        fact_events = enforce_schema_df(fact_events, GOLD_FACT_EVENTS_SCHEMA)
-    except Exception:
-        fact_events = spark.createDataFrame(fact_events.rdd, GOLD_FACT_EVENTS_SCHEMA)
+    fact_events = enforce_schema_df(fact_events, GOLD_FACT_EVENTS_SCHEMA)
 
     fact_events.coalesce(10).write \
         .mode("overwrite") \
         .option("overwriteSchema", "true") \
         .parquet(f"{output_path}/fact_events")
 
-    print("✔ fact_events written with stable schema")
+    print("fact_events written with stable schema")
 
 
 def build_fact_transactions(transactions, users, output_path, spark):
@@ -251,13 +226,10 @@ def build_fact_transactions(transactions, users, output_path, spark):
         "tx_date", "user_city", "user_age", "user_email"
     )
 
-    try:
-        fact_tx = enforce_schema_df(fact_tx, FACT_TX_SCHEMA)
-    except Exception:
-        fact_tx = spark.createDataFrame(fact_tx.rdd, FACT_TX_SCHEMA)
+    fact_tx = enforce_schema_df(fact_tx, FACT_TX_SCHEMA)
 
     fact_tx.coalesce(10).write.mode("overwrite").parquet(f"{output_path}/fact_transactions")
-    print("✔ fact_transactions written")
+    print("fact_transactions written")
 
 
 def build_fact_user_activity(events, transactions, users, output_path):
@@ -292,12 +264,10 @@ def build_fact_user_activity(events, transactions, users, output_path):
     )
 
     fact_user_activity.write.mode("overwrite").parquet(f"{output_path}/fact_user_activity")
-    print("✔ fact_user_activity written")
+    print("fact_user_activity written")
 
 
-# ====================================================
 # MART TABLES
-# ====================================================
 def build_daily_revenue(transactions, output_path, spark):
     daily = (
         transactions
@@ -327,13 +297,10 @@ def build_daily_revenue(transactions, output_path, spark):
 
     daily = daily.select(expected_cols)
 
-    try:
-        daily = enforce_schema_df(daily, DAILY_REVENUE_SCHEMA)
-    except Exception:
-        daily = spark.createDataFrame(daily.rdd, DAILY_REVENUE_SCHEMA)
+    daily = enforce_schema_df(daily, DAILY_REVENUE_SCHEMA)
 
     daily.write.mode("overwrite").parquet(f"{output_path}/daily_revenue")
-    print("✔ daily_revenue written with stable schema")
+    print("daily_revenue written with stable schema")
 
 
 def build_daily_active_users(events, transactions, output_path):
@@ -393,7 +360,7 @@ def build_daily_active_users(events, transactions, output_path):
     )
 
     dau.write.mode("overwrite").parquet(f"{output_path}/daily_active_users")
-    print("✔ daily_active_users written")
+    print("daily_active_users written")
 
 def build_user_ltv(events, transactions, output_path):
     events_user = (
@@ -422,12 +389,10 @@ def build_user_ltv(events, transactions, output_path):
     ltv = ltv.withColumn("last_event", safe_timestamp("last_event"))
 
     ltv.write.mode("overwrite").parquet(f"{output_path}/user_ltv")
-    print("✔ user_ltv written")
+    print("user_ltv written")
 
 
-# ====================================================
 # MAIN
-# ====================================================
 def main():
     spark, glueContext = create_spark_session()
     spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
@@ -474,8 +439,6 @@ def main():
     build_fact_events(events, users, GOLD_FACT, spark)
     build_fact_transactions(transactions, users, GOLD_FACT, spark)
     build_fact_user_activity(events, transactions, users, GOLD_FACT)
-
-    print("✔ Gold Framework Ready")
 
     build_daily_revenue(transactions, GOLD_MART, spark)
     build_daily_active_users(events, transactions, GOLD_MART)
