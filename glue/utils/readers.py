@@ -1,11 +1,11 @@
+from utils.schema_normalizer import SCHEMAS, dict_to_structtype
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
 
-# -------------------------------------------------------------------
-# Helper: empty DataFrame
-# -------------------------------------------------------------------
+
+# this creates an empty DataFrame
 def _empty_df(spark: SparkSession) -> DataFrame:
     return spark.createDataFrame(
         spark.sparkContext.emptyRDD(),
@@ -13,9 +13,7 @@ def _empty_df(spark: SparkSession) -> DataFrame:
     )
 
 
-# -------------------------------------------------------------------
-# Distributed-safe readers
-# -------------------------------------------------------------------
+# multi format readers and return empty dataframe if there is nothing to read
 def _read_parquet_if_exists(spark: SparkSession, path: str) -> DataFrame:
     try:
         return spark.read.parquet([f"{path}/*.parquet"])
@@ -111,10 +109,7 @@ def _read_txt_if_exists(spark: SparkSession, path: str) -> DataFrame:
     except Exception:
         return _empty_df(spark)
 
-
-# -------------------------------------------------------------------
-# Merge spark DataFrames preserving schema
-# -------------------------------------------------------------------
+# Merge spark DataFrames and also preserve schema
 def union_preserve_schema(dfs):
     all_cols = []
     for df in dfs:
@@ -143,25 +138,21 @@ def union_preserve_schema(dfs):
     return base
 
 
-# -------------------------------------------------------------------
-# PRODUCTION LOADER — BRONZE
-# -------------------------------------------------------------------
-from utils.schema_normalizer import SCHEMAS, dict_to_structtype
-
+# this is bronze loader
 def load_bronze_data(spark: SparkSession, bronze_path: str):
     dataset_name = bronze_path.split("/")[-1]
 
     schema_dict = SCHEMAS.get(dataset_name, None)
     schema_struct = dict_to_structtype(schema_dict) if schema_dict else None
 
-    # --- READ ALL FORMATS ---
+    # read all formats
     parquet_df = _read_parquet_if_exists(spark, bronze_path)
     json_df    = _read_json_if_exists(spark, bronze_path)
     csv_df     = _read_csv_if_exists(spark, bronze_path)
     gz_df      = _read_gz_if_exists(spark, bronze_path)
     txt_df     = _read_txt_if_exists(spark, bronze_path)
 
-    # Column normalization
+    # normalize columns
     def normalize_columns(df: DataFrame) -> DataFrame:
         return df.toDF(*[
             c.replace("`", "")
@@ -177,7 +168,7 @@ def load_bronze_data(spark: SparkSession, bronze_path: str):
     gz_df      = normalize_columns(gz_df)
     txt_df     = normalize_columns(txt_df)
 
-    # Merge all DF formats
+    # merge all formats
     df = union_preserve_schema([
         parquet_df,
         json_df,
@@ -186,9 +177,7 @@ def load_bronze_data(spark: SparkSession, bronze_path: str):
         txt_df,
     ])
 
-    # ---------------------------
-    # SAFE CAST → canonical schema
-    # ---------------------------
+    # this cast safely to canonical schema
     if schema_struct:
 
         def cast_to_schema(df: DataFrame, schema_struct: T.StructType) -> DataFrame:
@@ -216,9 +205,7 @@ def load_bronze_data(spark: SparkSession, bronze_path: str):
     return df
 
 
-# -------------------------------------------------------------------
-# PRODUCTION LOADER — SILVER
-# -------------------------------------------------------------------
+# this is silver loader
 def load_silver_data(spark: SparkSession, silver_path: str):
     parquet_df = _read_parquet_if_exists(spark, silver_path)
     json_df = _read_json_if_exists(spark, silver_path)
@@ -226,7 +213,7 @@ def load_silver_data(spark: SparkSession, silver_path: str):
 
     df = union_preserve_schema([parquet_df, json_df, csv_df])
 
-    # Normalize ID columns
+    # normalize id columns
     if "id" in df.columns and "user_id" not in df.columns:
         df = df.withColumn("user_id", F.col("id"))
 
