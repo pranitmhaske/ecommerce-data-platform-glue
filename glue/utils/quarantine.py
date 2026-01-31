@@ -1,19 +1,12 @@
 import logging
 from pyspark.sql import functions as F
 from pyspark.sql import DataFrame
-
+from utils.logger import get_logger
 
 # -------------------------------------------------------------------
 # Logger setup
 # -------------------------------------------------------------------
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-if not logger.handlers:
-    ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-    logger.addHandler(ch)
-
+logger = get_logger(__name__)
 
 # -------------------------------------------------------------------
 # Safe column accessor
@@ -118,8 +111,8 @@ def quarantine_rows(df: DataFrame, dataset_name: str, output_base_path: str):
         condition = F.lit(False)
 
     # Split datasets
-    bad = df.filter(condition).cache()
-    good = df.filter(~condition).cache()
+    bad = df.filter(condition)
+    good = df.filter(~condition)
 
     bad_count = bad.count()
     good_count = good.count()
@@ -141,12 +134,3 @@ def quarantine_rows(df: DataFrame, dataset_name: str, output_base_path: str):
         )
     else:
         logger.info("[QUARANTINE] No bad rows to write")
-
-    # Cleanup cache
-    try:
-        bad.unpersist()
-        good.unpersist()
-    except Exception:
-        pass
-
-    return good, bad
