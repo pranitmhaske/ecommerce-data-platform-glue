@@ -23,14 +23,14 @@ This Project involves:
  2. **ETL Pipeline**: Extractiong, transforming, and loading data from s3 to into redshift serverless.
  3. **Data Modeling**: Developing fact and dimension tables optimized for analytical queries and mart for business ready metrics.
 
-## Tools/Platforma used:
+## Tech stacks used:
 
 1. Syntheic datasets creation locally ubuntu, venv, pyspark, faker, tqdm.
 2. Airflow for automating.
 3. Pyspark for transformation logic.
 4. AWS: s3 as data lake, IAM for permission and security, GlueJob for running spark job, redshift for datawarehousing and analytical queries
 
-## Project requirments 
+## Project Requirements 
 
 #### Objective
 Develop a modern data lakehouse using Airflow, Spark, Glue, s3 as data lake, Redshift to consolidate events, transactions and users data, enabling analytical reporting and informed decision-making.
