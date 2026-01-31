@@ -9,9 +9,7 @@ from airflow.exceptions import AirflowFailException
 from airflow.models import Variable
 from airflow.providers.amazon.aws.operators.glue import GlueJobOperator
 
-# ============================================================
 # CONFIG
-# ============================================================
 
 REGION = "ap-south-1"
 
@@ -45,9 +43,7 @@ def on_failure_callback(context):
     )
 
 
-# ============================================================
 # DAG
-# ============================================================
 
 with DAG(
     dag_id="glue_silver_to_gold_spark",
@@ -60,7 +56,6 @@ with DAG(
     description="Glue Spark Silver→Gold (dim/fact/mart) pipeline",
 ) as dag:
 
-    # ---------------------- 1. Sanity / config check ---------------------- #
     @task()
     def sanity_check_config():
         glue_job_name = Variable.get("GLUE_JOB_S2G_NAME", default_var=None)
@@ -88,7 +83,7 @@ with DAG(
         log.info("[GLUE_S2G] Config OK. GlueJob=%s, Checked=%s", glue_job_name, checked)
         return {"glue_job": glue_job_name, "layout": checked}
 
-    # ---------------------- 2. Run Glue Spark job ---------------------- #
+    #  Run Glue Spark job 
     glue_step = GlueJobOperator(
         task_id="silver_to_gold_glue_job",
         job_name="{{ task_instance.xcom_pull(task_ids='sanity_check_config')['glue_job'] }}",
@@ -105,7 +100,6 @@ with DAG(
         },
     )
 
-    # ---------------------- 3. Verify Gold outputs exist ---------------------- #
     @task()
     def verify_gold_outputs(prev:dict):
         s3 = _get_s3_client()
