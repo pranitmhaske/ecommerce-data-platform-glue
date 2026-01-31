@@ -1,9 +1,5 @@
 from pyspark.sql import functions as F
 
-#------------------------------------------------
-# USER SCD MERGE
-#------------------------------------------------
-
 def merge_user_history(df):
     pk = "user_id"
     order_col = "updated_at"
