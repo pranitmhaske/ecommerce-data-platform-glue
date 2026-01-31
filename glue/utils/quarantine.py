@@ -88,12 +88,6 @@ def sanitize_void_columns(df: DataFrame):
 def quarantine_rows(df: DataFrame, dataset_name: str, output_base_path: str):
     """
     Split dataset into good + bad rows using quarantine rules.
-    BAD records are written to:
-
-        s3://bucket/quarantine/<dataset_name>/
-
-    Returns:
-        good_df, bad_df
     """
 
     if df is None:
