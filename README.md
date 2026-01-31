@@ -16,7 +16,7 @@ This project follows Medallion Architecture Bronze, Silver, and Gold layers and 
 4. **Gold layer**: This layer houses business-ready data modeled into a star schema required for reporting and analytics
 
 ---
-##Project Overview
+## Project Overview
 
 This Project involves:
  1. **Data Architecture**: Designing a Modern Data LakeHouse using Medallion Arichitecture: **Bronze**, **Silver**, **Gold** layers.
