@@ -7,9 +7,7 @@ from airflow.decorators import task
 from airflow.exceptions import AirflowFailException
 from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 
-# ========================
 # CONFIG
-# ========================
 
 REGION = "ap-south-1"
 S3_GOLD_BUCKET = "ecom-p3-gold"
@@ -31,9 +29,7 @@ TABLES = [
 
 rs = boto3.client("redshift-data", region_name=REGION)
 
-# ========================
 # HELPERS
-# ========================
 
 def run_sql_and_wait(sql: str):
     resp = rs.execute_statement(
@@ -52,9 +48,7 @@ def run_sql_and_wait(sql: str):
             raise AirflowFailException(desc.get("Error"))
         time.sleep(2)
 
-# ========================
 # SQL
-# ========================
 
 CREATE_TABLES_SQL = """
 CREATE SCHEMA IF NOT EXISTS ecommerce_gold;
@@ -128,9 +122,7 @@ CREATE TABLE IF NOT EXISTS ecommerce_gold.user_ltv (
 );
 """
 
-# ========================
 # DAG
-# ========================
 
 default_args = {
     "owner": "pranit",
@@ -147,12 +139,11 @@ with DAG(
     default_args=default_args,
 ) as dag:
 
-    # ---------- CREATE TABLES ----------
     @task
     def create_tables():
         run_sql_and_wait(CREATE_TABLES_SQL)
 
-    # ---------- WAIT FOR GOLD OUTPUTS ----------
+    #  WAIT FOR GOLD OUTPUTS 
     wait_for_s3 = S3KeySensor.partial(
         aws_conn_id="aws_default",
         bucket_name=S3_GOLD_BUCKET,
@@ -164,7 +155,6 @@ with DAG(
         bucket_key=[f"{t['prefix']}_SUCCESS" for t in TABLES],
     )
 
-    # ---------- LOAD TABLE ----------
     @task
     def load_table(table_cfg: dict):
         table = table_cfg["table"]
@@ -182,7 +172,6 @@ with DAG(
 
         return table
 
-    # ---------- VALIDATE TABLE ----------
     @task
     def validate_table(table: str):
         resp = rs.execute_statement(
@@ -207,10 +196,7 @@ with DAG(
         if count == 0:
             raise AirflowFailException(f"{table} has ZERO rows")
 
-    # ========================
-    # FLOW
-    # ========================
-
+    #task dependencies
     create_tables() >> wait_for_s3
 
     loaded = load_table.expand(
