@@ -18,7 +18,7 @@ def _empty_df(spark: SparkSession) -> DataFrame:
 # -------------------------------------------------------------------
 def _read_parquet_if_exists(spark: SparkSession, path: str) -> DataFrame:
     try:
-        return spark.read.parquet(f"{path}/*.parquet")
+        return spark.read.parquet([f"{path}/*.parquet"])
     except Exception:
         return _empty_df(spark)
 
@@ -30,10 +30,10 @@ def _read_json_if_exists(spark: SparkSession, path: str) -> DataFrame:
                 .option("multiLine", False)
                 .option("mode", "PERMISSIVE")
                 .option("badRecordsPath", f"{path}/_quarantine")
-                .json(
+                .json([
                     f"{path}/*.json",
                     f"{path}/*.ndjson"
-                )
+                ])
         )
     except Exception:
         return _empty_df(spark)
@@ -45,7 +45,7 @@ def _read_csv_if_exists(spark: SparkSession, path: str) -> DataFrame:
             spark.read
                 .option("header", True)
                 .option("inferSchema", True)
-                .csv(f"{path}/*.csv")
+                .csv([f"{path}/*.csv"])
         )
     except Exception:
         return _empty_df(spark)
@@ -60,10 +60,10 @@ def _read_gz_if_exists(spark: SparkSession, path: str) -> DataFrame:
                     .option("multiLine", False)
                     .option("mode", "PERMISSIVE")
                     .option("badRecordsPath", f"{path}/_quarantine")
-                    .json(
+                    .json([
                         f"{path}/*.json.gz",
                         f"{path}/*.ndjson.gz"
-                    )
+                    ])
             )
         except Exception:
             pass
@@ -73,10 +73,10 @@ def _read_gz_if_exists(spark: SparkSession, path: str) -> DataFrame:
             spark.read
                 .option("header", False)
                 .option("inferSchema", True)
-                .csv(
+                .csv([
                     f"{path}/*.csv.gz",
                     f"{path}/*.txt.gz"
-                )
+                ])
         )
 
     except Exception:
@@ -92,10 +92,10 @@ def _read_txt_if_exists(spark: SparkSession, path: str) -> DataFrame:
                     .option("multiLine", False)
                     .option("mode", "PERMISSIVE")
                     .option("badRecordsPath", f"{path}/_quarantine")
-                    .json(
+                    .json([
                         f"{path}/*.json.txt",
                         f"{path}/*.ndjson.txt"
-                    )
+                    ])
             )
         except Exception:
             pass
@@ -105,7 +105,7 @@ def _read_txt_if_exists(spark: SparkSession, path: str) -> DataFrame:
             spark.read
                 .option("header", False)
                 .option("inferSchema", True)
-                .csv(f"{path}/*.txt")
+                .csv([f"{path}/*.txt"])
         )
 
     except Exception:
