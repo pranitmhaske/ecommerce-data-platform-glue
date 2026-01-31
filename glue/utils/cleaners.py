@@ -1,15 +1,10 @@
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
-# ============================================================
-# CLEANERS FOR E-COMMERCE DATASET
-# ============================================================
 
 NULL_STRINGS = {"", " ", "  ", "NaN", "nan", "NULL", "null", "None", "NONE", "N/A", "n/a"}
 
-# ------------------------------------------------------------------
-# Helper: Normalize null-like values → real null
-# ------------------------------------------------------------------
+# cleans null like strings and convert them to real null
 def normalize_nulls(df):
     for col, dtype in df.dtypes:
         df = df.withColumn(
@@ -19,18 +14,14 @@ def normalize_nulls(df):
         )
     return df
 
-# ------------------------------------------------------------------
-# Helper: Trim all string columns
-# ------------------------------------------------------------------
+# this function cleans whitespaces from string datatypes
 def trim_strings(df):
     for col, dtype in df.dtypes:
         if dtype == "string":
             df = df.withColumn(col, F.trim(F.col(col)))
     return df
 
-# ------------------------------------------------------------------
-# Helper: Numeric sanitizer (handles dirty numbers)
-# ------------------------------------------------------------------
+# this function removes commas and empty strings
 def sanitize_numeric(df, col):
     if col not in df.columns:
         return df
@@ -40,9 +31,7 @@ def sanitize_numeric(df, col):
          .otherwise(F.regexp_replace(F.col(col).cast("string"), ",", ""))
     )
 
-# ------------------------------------------------------------------
-# Helper: Strong timestamp parser for dirty real-world formats
-# ------------------------------------------------------------------
+# parse timestamp parse for wrong formats
 def parse_timestamp(df, col):
     if col not in df.columns:
         return df
@@ -65,9 +54,7 @@ def parse_timestamp(df, col):
 
     return df.drop(raw)
 
-# ------------------------------------------------------------------
-# EVENTS CLEANER — aligned with REAL schema
-# ------------------------------------------------------------------
+# cleans datasets using previous functions
 def clean_events(df):
     df = normalize_nulls(df)
     df = trim_strings(df)
@@ -81,9 +68,6 @@ def clean_events(df):
 
     return df
 
-# ------------------------------------------------------------------
-# USERS CLEANER — aligned with REAL schema
-# ------------------------------------------------------------------
 def clean_users(df):
     df = normalize_nulls(df)
     df = trim_strings(df)
@@ -96,9 +80,6 @@ def clean_users(df):
 
     return df
 
-# ------------------------------------------------------------------
-# TRANSACTIONS CLEANER — aligned with REAL schema
-# ------------------------------------------------------------------
 def clean_transactions(df):
     df = normalize_nulls(df)
     df = trim_strings(df)
@@ -113,9 +94,7 @@ def clean_transactions(df):
 
     return df
 
-# ------------------------------------------------------------------
-# MAIN ROUTER
-# ------------------------------------------------------------------
+# main
 def clean_columns(df, dataset_name):
     d = dataset_name.lower()
 
