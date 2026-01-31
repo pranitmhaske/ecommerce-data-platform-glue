@@ -4,7 +4,7 @@ This project demomnstrates handling of highly messy and multi format data that c
 
 ---
 ## Architecture
-This project follows Medallion Architecture Bronze, Silver, and Gold layers and automated using Airflow:
+This project follows Medallion Architecture Bronze, Silver, and Gold layers and is automated using Airflow:
 
 <img src="docs/architecture/full_architecture.drawio.png" width="250"/>
 
