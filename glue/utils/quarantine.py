@@ -3,30 +3,19 @@ from pyspark.sql import functions as F
 from pyspark.sql import DataFrame
 from utils.logger import get_logger
 
-# -------------------------------------------------------------------
 # Logger setup
-# -------------------------------------------------------------------
 logger = get_logger(__name__)
 
-# -------------------------------------------------------------------
-# Safe column accessor
-# -------------------------------------------------------------------
+# safe way to access columns
 def _safe_col(df: DataFrame, col_name: str):
-    """
-    Return a column if it exists, otherwise a literal NULL
-    """
     if df is None or col_name not in df.columns:
         return F.lit(None)
     return F.col(col_name)
 
 
-# -------------------------------------------------------------------
-# Dataset specific quarantine conditions
-# -------------------------------------------------------------------
+# dataset specific quarantine conditions
 def get_quarantine_conditions(df: DataFrame, dataset_name: str):
-    """
-    Returns a boolean Spark expression marking rows that should be quarantined
-    """
+    """Returns a boolean Spark expression marking rows that should be quarantined"""
     default_false = F.lit(False)
 
     if df is None:
@@ -65,13 +54,8 @@ def get_quarantine_conditions(df: DataFrame, dataset_name: str):
     return default_false
 
 
-# -------------------------------------------------------------------
 # Sanitize void/unknown columns
-# -------------------------------------------------------------------
 def sanitize_void_columns(df: DataFrame):
-    """
-    Replace any void/null/unknown typed Spark columns with a known safe type
-    """
     if df is None:
         return df
 
@@ -82,13 +66,9 @@ def sanitize_void_columns(df: DataFrame):
     return df
 
 
-# -------------------------------------------------------------------
 # Main quarantine function
-# -------------------------------------------------------------------
 def quarantine_rows(df: DataFrame, dataset_name: str, output_base_path: str):
-    """
-    Split dataset into good + bad rows using quarantine rules.
-    """
+    """ this quarantine bad data while let good data to continue"""
 
     if df is None:
         logger.warning("quarantine_rows called with df=None")
