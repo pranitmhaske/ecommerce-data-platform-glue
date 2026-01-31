@@ -1,8 +1,8 @@
 # E-Commerce Data Platform (AWS Glue + Airflow)
-Welcome to event drive E-ecommerce data platform repository. 
+Welcome to event driven E-ecommerce data platform repository. 
 This project demomnstrates handling of highly messy and multi format data that contains schema drifts, duplicate records, dirty values, partition records, corrupt files and still deliver analytics ready data to load it redshift and automate using airflow
 
-
+---
 ## Architecture
 This project follows Medallion Architecture Bronze, Silver, and Gold layers and automated using Airflow:
 
@@ -10,10 +10,10 @@ This project follows Medallion Architecture Bronze, Silver, and Gold layers and 
 
 ---
 
-**Raw Ingestion**: This validates files for format and corrupt files and ensures bad data does not break downstream processing.
-**Bronze layer**: Stores still raw but validated data.
-**Silver layer**: This is where transformation is applied: cleansing, standardization, and normalization processes to prepare data for analysis.
-**Gold layer**: This layer houses business-ready data modeled into a star schema required for reporting and analytics
+1. **Raw Ingestion**: This validates files for format and corrupt files and ensures bad data does not break downstream processing.
+2. **Bronze layer**: Stores still raw but validated data.
+3. **Silver layer**: This is where transformation is applied: cleansing, standardization, and normalization processes to prepare data for analysis.
+4. **Gold layer**: This layer houses business-ready data modeled into a star schema required for reporting and analytics
 
 ---
 ##Project Overview
@@ -23,6 +23,12 @@ This Project involves:
  2. **ETL Pipeline**: Extractiong, transforming, and loading data from s3 to into redshift serverless.
  3. **Data Modeling**: Developing fact and dimension tables optimized for analytical queries and mart for business ready metrics.
 
+## Tools/Platforma used:
+
+1. Syntheic datasets creation locally ubuntu, venv, pyspark, faker, tqdm.
+2. Airflow for automating.
+3. Pyspark for transformation logic.
+4. AWS: s3 as data lake, IAM for permission and security, GlueJob for running spark job, redshift for datawarehousing and analytical queries
 
 ## Project requirments 
 
