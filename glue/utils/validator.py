@@ -1,15 +1,12 @@
 from pyspark.sql import functions as F
 from utils.rules import dq_check_not_null, dq_check_unique, dq_check_timestamp
 
-# -----------------------------------------------------------
-# Compute total rows + per-column null stats (optimized)
-# -----------------------------------------------------------
+# Compute total rows + null stats 
 def compute_null_stats(df):
     total = df.count()
     if total == 0:
         return total, {c: 0 for c in df.columns}
 
-    # Single aggregation instead of scanning per-column
     exprs = [
         F.count(F.when(F.col(c).isNull(), c)).alias(c)
         for c in df.columns
@@ -21,9 +18,7 @@ def compute_null_stats(df):
     return total, stats
 
 
-# -----------------------------------------------------------
 # Write metrics DataFrame to CSV
-# -----------------------------------------------------------
 def write_metrics(spark, dataset_name, base_path, metrics):
     rows = [(k, str(v)) for k, v in metrics.items()]
     df = spark.createDataFrame(rows, ["metric", "value"])
@@ -35,25 +30,18 @@ def write_metrics(spark, dataset_name, base_path, metrics):
     )
 
 
-# -----------------------------------------------------------
-# Validator: compute metrics & return df unchanged
-# -----------------------------------------------------------
+# Validator compute metrics & return df unchanged
 def validate(df, spark, dataset_name, metrics_path):
     metrics = {}
 
-    # ----------------------------------------
-    # 1. Total row count + null stats
-    # ----------------------------------------
+    # Total row count + null stats
     total_rows, null_stats = compute_null_stats(df)
     metrics["total_rows"] = total_rows
 
     for col_name, rate in null_stats.items():
         metrics[f"null_rate_{col_name}"] = rate
 
-    # ----------------------------------------
-    # 2. RULE CHECKS
-    # ----------------------------------------
-
+    # RULE CHECKS
     # not-null always
     for col in df.columns:
         ok, bad = dq_check_not_null(df, col)
@@ -70,8 +58,6 @@ def validate(df, spark, dataset_name, metrics_path):
             ok, bad = dq_check_timestamp(df, tcol)
             metrics[f"dq_timestamp_{tcol}"] = bad
 
-    # ----------------------------------------
     # 3. Write metrics
-    # ----------------------------------------
     write_metrics(spark, dataset_name, metrics_path, metrics)
     return df
