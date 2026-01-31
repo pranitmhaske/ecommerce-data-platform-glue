@@ -1,40 +1,47 @@
-# Event-Driven E-Commerce Data Platform (AWS Glue + Airflow)
+# E-Commerce Data Platform (AWS Glue + Airflow)
+Welcome to event drive E-ecommerce data platform repository. 
+This project demomnstrates handling of highly messy and multi format data that contains schema drifts, duplicate records, dirty values, partition records, corrupt files and still deliver analytics ready data to load it redshift and automate using airflow
+
 
 ## Architecture
-
-End-to-end, event-driven data platform using Airflow, AWS Glue, S3 (Bronze/Silver/Gold), and Redshift Serverless.
+This project follows Medallion Architecture Bronze, Silver, and Gold layers and automated using Airflow:
 
 <img src="docs/architecture/full_architecture.drawio.png" width="250"/>
 
-This repository demonstrates a production-style data engineering platform designed to ingest, clean, model, and serve e-commerce data at scale.
+**Raw Ingestion**: This validates files for format and corrupt files and ensures bad data does not break downstream processing
+**Bronze layer**: Stores still raw but validated data.
+**Silver layer**: This is where transformation is applied: cleansing, standardization, and normalization processes to prepare data for analysis
+**Gold layer**: This layer houses business-ready data modeled into a star schema required for reporting and analytics
 
-The system is built to mirror real enterprise data platforms, focusing on reliability, data quality, and operational correctness.
+---
+##Project Overview
 
-Production-grade ELT analytics platform built with Airflow, AWS Glue (Spark), Amazon S3, and Redshift Serverless.
+This Project involves:
+ 1. **Data Architecture**: Designing a Modern Data LakeHouse using Medallion Arichitecture: **Bronze**, **Silver**, **Gold** layers.
+ 2. **ETL Pipeline**: Extractiong, transforming, and loading data from s3 to into redshift serverless.
+ 3. **Data Modeling**: Developing fact and dimension tables optimized for analytical queries and mart for business ready metrics.
 
-- Event-driven ingestion of untrusted data (S3 → Airflow)
-- RAW → BRONZE → SILVER → GOLD lakehouse architecture
-- Schema enforcement, schema drift handling, quarantine-based error isolation, SCD Type 1 dimensions
-- Deterministic dimension, fact & mart modeling for analytics
-- Scales from GBs to TBs without redesign
 
-## Execution Proof (Screenshots)
+## Project requirments 
 
-This section demonstrates that the platform was executed end-to-end on AWS.
+#### Objective
+Develop a modern data lakehouse using Airflow, Spark, Glue, s3 as data lake, Redshift to consolidate events, transactions and users data, enabling analytical reporting and informed decision-making.
 
-### Airflow
-- DAG orchestration and successful runs
-- Master orchestrator triggering downstream pipelines
+#### Specifications
+- **Data Sources**: Locally created datasets: events, transaction, and users. It is highly messy, multi-format(.csv, .csv.gz .json, .ndjson, .ndjson.gz, .txt, .gz) and corrupt data.
+- **Data Quality**: Cleanse and resolve data quality issues prior to analysis.
+- **Integration**: Combine three datasets into friendly data model designed for analytical queries.
+- **Scope**: Focus on the latest dataset only; historization of data is not required.
+- **Documentation**: Provide clear documentation of the data model to support both business stakeholders and analytics teams.
 
-### AWS Glue
-- Spark ETL job executions
-- CloudWatch logs for observability
+### BI: Analytics & Reporting (Data Analysis)
 
-### Amazon S3
-- RAW / BRONZE / SILVER / GOLD bucket structure
+#### Objective
+Develop pyspark-based, aws hosted and airflow automated to deliver detailed insights into:
 
-### Amazon Redshift Serverless
-- Successful COPY from S3 GOLD
-- Row-count validation on dimension, fact, and mart tables
+- **User Activiy**
+- **Daily Revenue**
+- **User Life-Time-Value**
 
-See full execution screenshots in [`docs/screenshots`](docs/screenshots).
+These insights empower stakeholders with key business metrics, enabling strategic decision-making.  
+
