@@ -1,11 +1,11 @@
-## Section 9 — Error Handling & Quarantine Strategy (Enterprise Grade)
+## Section 9 — Error Handling & Quarantine Strategy
 
 This section documents how failures and bad data are handled so the pipeline remains reliable, debuggable, auditable, and safe for analytics consumption.
 
 ---
 
-### 9.1 Failure Philosophy
-The pipeline follows three core principles:
+### 9.1 Failure prevention
+The pipeline follows three rules:
 
 - **Fail fast, fail explicitly**  
   Critical correctness checks (schema enforcement, required fields, empty outputs) raise errors that immediately stop execution.
@@ -16,18 +16,13 @@ The pipeline follows three core principles:
 - **Automated stop on failure**  
   Any failed Glue job or validation step causes the Airflow DAG to fail, preventing downstream contamination.
 
-This mirrors how production data platforms are operated in real companies.
-
 ---
 
-### 9.2 Error Categories & Handling Paths
+### 9.2 Error & Handling Paths
 
 **1️ File-level corruption (RAW → BRONZE ingestion)**  
-Detected by:
 - try_read() failures
 - S3 read exceptions
-
-Action:
 - File is copied to:
   s3://ecom-p3-quarantine/{dataset}/
 - Original RAW file is deleted
@@ -36,21 +31,15 @@ Action:
 ---
 
 **2️ Invalid or unsupported file format (ingestion)**  
-Detected by:
 - valid_format() checks
-
-Action:
 - File is moved to quarantine
 - Reason is logged in Airflow task logs
 
 ---
 
 **3️ Parse / structural failures (Bronze reader)**  
-Detected by:
 - Reader-level parsing failures
 - Schema casting failures during normalization
-
-Action:
 - Affected rows are quarantined via custom logic
 - Remaining valid rows continue through the pipeline
 
@@ -59,13 +48,10 @@ Action:
 ---
 
 **4️ Row-level DQ failures (Bronze → Silver / Silver → Gold)**  
-Examples:
 - Missing primary keys
 - Invalid timestamps
 - Negative or impossible numeric values
 - Business-rule violations
-
-Action:
 - Rows are written to:
   s3://ecom-p3-quarantine/<dataset>/
 - Valid rows proceed downstream
@@ -73,12 +59,9 @@ Action:
 ---
 
 **5️ Strict correctness failures**  
-Examples:
 - Zero valid rows after normalization
 - All rows quarantined
 - Required-field enforcement fails
-
-Action:
 - STRICT_FAIL exception raised
 - Glue job aborts
 - Airflow marks DAG as failed
@@ -87,11 +70,8 @@ Action:
 ---
 
 **6️ Transient infrastructure errors**  
-Examples:
 - Glue executor issues
 - Temporary S3 or Redshift API failures
-
-Action:
 - Handled via Airflow retry configuration
 - If retries are exhausted, the job fails and diagnostic logs remain available
 
@@ -115,7 +95,7 @@ This provides sufficient information for root-cause analysis and recovery, witho
 
 ---
 
-### 9.4 Recovery & Replay Strategy
+### 9.4 Investagtion of quarantined files
 The pipeline supports manual, controlled recovery:
 - Quarantined rows remain available for inspection
 - Engineers can:
@@ -138,7 +118,7 @@ Together, these provide end-to-end traceability across the pipeline.
 
 ---
 
-### 9.6 Retention & Cost Control
+### 9.6 Storage Cost Control
 Recommended lifecycle policies:
 - Quarantine data: retain ~30 days
 - Metrics & logs: retain 90–180 days
