@@ -5,8 +5,6 @@
 The Silver → Gold Glue job is the core business logic layer of the pipeline.  
 It converts cleaned and normalized Silver data into analytics-grade dimensional models, fact tables, and business marts consumed by BI tools and downstream systems.
 
-This layer mirrors how real-world production data warehouses are designed and operated.
-
 ---
 
 ## 6.1 Purpose of the Silver → Gold Job
@@ -45,8 +43,6 @@ The Gold layer is logically divided into three zones:
 - daily_revenue  
 - daily_active_users  
 - user_ltv  
-
-This structure mirrors real e-commerce analytical warehouses.
 
 ---
 
@@ -111,7 +107,7 @@ A full calendar dimension generated from both events and transactions:
 
 This enables proper time-based analysis in BI tools.
 
----r
+---
 
 ## 6.5 Fact Tables (FACT)
 
