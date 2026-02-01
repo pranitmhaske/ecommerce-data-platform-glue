@@ -25,7 +25,7 @@ This Project involves:
 
 ## Tech stacks used:
 
-1. Syntheic datasets creation locally ubuntu, venv, pyspark, faker, tqdm.
+1. Synthetic Data Generation: Custom-built datasets designed to simulate production "chaos" (schema drift, malformed files, and PII).
 2. Airflow for automating.
 3. Pyspark for transformation logic.
 4. AWS: s3 as data lake, IAM for permission and security, GlueJob for running spark job, redshift for datawarehousing and analytical queries
