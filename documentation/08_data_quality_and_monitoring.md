@@ -61,8 +61,6 @@ Additional validation logic includes:
 - Timestamp safety checks
 - Dataset-specific rule enforcement
 
-These utilities mirror patterns found in enterprise data governance frameworks, implemented directly in Spark.
-
 ---
 
 ### 8.3 validate() — Central Metrics Generator
@@ -82,7 +80,7 @@ Metrics are written to S3 for each dataset, enabling:
 ---
 
 ### 8.4 S3-Based Metrics Storage
-Metrics are written as CSV files to:
+Metrics are written as CSV files because it allows me to quickly preview the pipeline health directly in the S3 console :
 s3://ecom-p3-metrics/<dataset>/
 
 Example structure:
@@ -106,8 +104,8 @@ These files act as batch-level health indicators for every pipeline run.
 The Bronze → Silver Glue job enforces strict failure rules.
 
 **STRICT_FAIL behavior**  
-If any critical step produces zero valid rows, the job aborts immediately.
-
+This was added after a run where a input caused the entire events dataset to be quarantined. 
+The job technically succeeded but the silver layer was empty. Now, the job kills itself if the output count is 0.
 Examples:
 - Empty DataFrame after schema normalization
 - All rows quarantined
@@ -134,8 +132,6 @@ Why this matters:
 - Failed records remain available for forensic analysis
 - Supports replay, fixes, and controlled reprocessing
 
-This is a standard modern data platform pattern.
-
 ---
 
 ### 8.7 Monitoring via Logs & Metrics
@@ -144,8 +140,6 @@ Pipeline observability is achieved through:
 - Glue job logs (Spark execution, strict-fail exceptions)
 - S3 metrics outputs
 - CloudWatch Glue logs
-
-This provides end-to-end traceability and auditability.
 
 ---
 
