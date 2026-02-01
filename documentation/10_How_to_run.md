@@ -1,5 +1,4 @@
 ## Section 10 — How to Run the Glue Version (Local + AWS)
-Enterprise-grade, reproducible, and reviewer-friendly
 
 This section explains exactly how the Glue version of the pipeline is executed, both for local validation and AWS production runs, 
 without assumptions or hidden steps.
@@ -130,8 +129,6 @@ Airflow:
    Bronze → Silver → Gold → Redshift
 4. Redshift tables are refreshed
 5. BI systems can query immediately
-
-This is the default enterprise execution path.
 
 ---
 
