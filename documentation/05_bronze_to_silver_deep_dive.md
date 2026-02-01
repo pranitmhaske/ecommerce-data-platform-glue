@@ -1,12 +1,12 @@
 ## Section 5 — Bronze → Silver Glue Job (Deep Dive)
-**Enterprise-grade transformation, schema governance, data quality, and cleaning layer**
+**schema governance, data quality, and cleaning layer**
 
 ---
 
 ### **5.1 Purpose of the Bronze → Silver Job**
 This Glue Spark job transforms raw, multi-format **Bronze** data into a clean, validated, schema-consistent **Silver** layer suitable for analytical modeling and downstream Gold transformations.
 
-It addresses real-world production complexity, including:
+It addresses complexity, including:
 - Mixed input formats (JSON, NDJSON, CSV, TXT, GZIP, Parquet)
 - Schema drift across files and time
 - Corrupt and invalid records
@@ -21,22 +21,21 @@ This job represents the **core data reliability layer** of the pipeline.
 
 ---
 
-### **5.2 Multi-Format Bronze Reader (Enterprise Loader)**
+### **5.2 Multi-Format Bronze Reader**
 The `readers.py` module implements a unified Bronze ingestion layer that abstracts file-format complexity.
 
 **Capabilities**
-- ✔ Reads all supported formats:
+- Reads all supported formats:
   - Parquet  
   - JSON  
   - NDJSON  
   - CSV  
   - TXT (auto-detects JSON-lines vs delimited text)  
   - GZIP (auto-detects JSON vs CSV)
-- ✔ Schema-safe union across formats:
+- Schema-safe union across formats (using unionByName with allowMissingColumns=True):
   - No column loss  
   - No positional mismatches  
-  - Safe merging of heterogeneous files
-- ✔ Canonical schema application:
+- Canonical schema application:
   - Data is cast into dataset-specific canonical schemas via `schema_normalizer.py`
 
 **Result:**  
@@ -69,7 +68,7 @@ Rows failing required-field checks are **quarantined**, not silently dropped.
 
 ---
 
-### **5.4 Cleaning Layer (Production-Grade)**
+### **5.4 Cleaning Layer**
 The `clean_columns()` module applies dataset-aware cleaning logic.
 
 **Cleaning Operations**
@@ -107,7 +106,7 @@ This prevents:
 
 ---
 
-### **5.6 Quarantine Strategy (Enterprise Standard)**
+### **5.6 Quarantine Strategy**
 The pipeline implements a custom, deterministic quarantine system.
 
 **What gets quarantined**
@@ -123,17 +122,16 @@ s3://ecom-p3-quarantine/<dataset>/
 **Why this matters**
 - Silver layer contains only valid, analyzable data  
 - No silent data loss  
-- Full forensic visibility  
-- Matches real enterprise data-quality patterns  
+- Full forensic visibility   
 
 ---
 
-### **5.7 SCD-Style User Handling (Type-1 Semantics)**
-For the `users` dataset, the pipeline applies **Type-1 SCD semantics**.
+### **5.7 SCD-Style User Handling (Type-1 paritial)**
+For the users dataset, the pipeline applies **Type-1 SCD partial**.
 
 **Behavior**
 - Merges partial updates per `user_id`
-- Selects latest field values using `updated_at`
+- Here it has not tie breaker column(if such a condition does occurs in production, must use ingestion timestamp)
 - Produces one authoritative snapshot per user
 - Rebuilds `event_date` for partition consistency
 
