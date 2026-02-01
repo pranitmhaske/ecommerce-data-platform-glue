@@ -1,11 +1,11 @@
-# Data Lake Layout (AWS S3 — Glue Edition)
+# Data Lake Layout (AWS S3 — Glue )
 
-This Glue Edition pipeline implements a multi-zone AWS S3 data lake architecture aligned with real-world enterprise lakehouse patterns.
+This Glue pipeline applies a multi-zone AWS S3 data lake architecture aligned with lakehouse patterns.
 The design emphasizes data immutability, isolation of bad data, schema stability, and analytics readiness.
 
 ---
 
-## Bucket Overview (Final Production Names)
+## Bucket Overview
 
 All data processing is organized into purpose-specific S3 buckets, each with a clearly defined responsibility.
 
@@ -146,7 +146,7 @@ Storage location only — does not affect architectural design.
 
 ---
 
-## Partitioning Strategy (Enterprise-Grade)
+## Partitioning Strategy
 
 Both SILVER and GOLD layers use date-based partitioning.
 
@@ -167,7 +167,7 @@ Examples:
 
 ---
 
-## Enterprise Layering Rationale
+## Layering Rationale
 
 RAW — Immutable source of truth (Auditable, reproducible)  
 BRONZE — File-level validation (Shields downstream systems)  
