@@ -1,9 +1,7 @@
-## Section 7 — Integration with Airflow (Enterprise-Level Orchestration)
+## Section 7 — Integration with Airflow 
 
 This project runs as a fully automated, event-driven, end-to-end data pipeline.  
 Once deployed, the Glue Bronze → Silver → Gold → Redshift transformations execute without any manual intervention. Airflow continuously monitors RAW data arrivals, orchestrates Glue jobs, validates configuration, and enforces strict sequencing across all layers.
-
-This orchestration layer is what elevates the project from isolated Glue jobs to a real-world production data platform.
 
 ---
 
@@ -33,8 +31,6 @@ Airflow acts as the central control plane for the pipeline and orchestrates:
 - A single master DAG coordinates all transformation stages:
   BRONZE → SILVER → GOLD → REDSHIFT
 
-This mirrors how enterprise pipelines are structured in production environments.
-
 ---
 
 ### 7.2 Event-Driven RAW → BRONZE Design
@@ -51,7 +47,7 @@ As soon as any supported file lands in RAW (CSV, JSON, NDJSON, TXT, GZ, Parquet)
 - Routes corrupt or invalid files to QUARANTINE
 - Deletes the RAW copy
 
-**Enterprise benefits**
+**benefits**
 - Near-real-time ingestion
 - Zero manual triggering
 - Transparent error isolation
@@ -117,14 +113,3 @@ This guarantees:
 - Predictable recovery behavior
 
 ---
-
-### 7.7 Why This Airflow Design Is Enterprise-Level
-Orchestration includes all patterns expected in senior-level data platforms:
-- Fully automated, event-driven execution
-- Multi-format ingestion
-- Glue Spark integration
-- Strict dependency enforcement
-- XCom & Variable-driven configuration
-- Fail-fast behavior
-- Master orchestration
-- End-to-end lineage: RAW → BRONZE → SILVER → GOLD → REDSHIFT
