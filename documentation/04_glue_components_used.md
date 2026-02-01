@@ -1,7 +1,6 @@
-# Glue Components Used (Enterprise-Grade)
+# Glue Components Used 
 
-This section documents all AWS Glue–related components actually used in the pipeline, why they were chosen, and how they fit into a real enterprise data platform.  
-No over-claims and no unused features.
+This section documents all AWS Glue–related components actually used in the pipeline and why they were chosen.
 
 ---
 
@@ -16,9 +15,9 @@ The pipeline uses:
 
 ---
 
-## Glue Jobs (Core Processing Units)
+## Glue Jobs
 
-### Glue Job — Bronze → Silver (`bronze_to_silver_transformation.py`)
+### Glue Job — Bronze → Silver (bronze_to_silver_transformation.py)
 
 **Purpose**
 - Clean highly inconsistent 9.1 GB raw data
@@ -26,10 +25,10 @@ The pipeline uses:
 - Sanitize nulls, void columns, and invalid types
 - Dataset-specific deduplication
 - Row-level quarantine for invalid records
-- Enforce strict `event_date` partitioning
+- Enforce strict event_date partitioning
 - Generate data quality metrics
 
-**Key Features (Senior-Level)**
+**Key Features**
 - Handles mixed formats: JSON, NDJSON, CSV, CSV.GZ, TXT, Parquet
 - Canonical schema enforcement using code-based schemas
 - SCD-style user history handling in Silver
@@ -49,14 +48,14 @@ The pipeline uses:
 
 ---
 
-### Glue Job — Silver → Gold (`gold_dim_fact_mart.py`)
+### Glue Job — Silver → Gold (gold_dim_fact_mart.py)
 
 **Purpose**
 - Build analytics-ready dimension, fact, and mart tables
 - Apply business logic at scale
 - Enforce schema stability for BI consumption
 
-**Key Features (Senior-Level)**
+**Key Features**
 - Broadcast joins for enrichment
 - Strict schemas via explicit `StructType`
 - Deterministic full refresh (overwrite) modeling
@@ -77,9 +76,9 @@ The pipeline uses:
 
 ---
 
-## Glue Execution Class & Runtime
+## Glue worker type & Runtime
 
-**Execution Class**
+**worker type**
 - G.1X (default)
 
 **Why this is correct**
@@ -148,7 +147,7 @@ Glue job logs emitted to CloudWatch:
 
 ---
 
-## Bad Data Handling (Code-Accurate)
+## Bad Data Handling
 
 **Important correction**
 - Glue native `badRecordsPath` is not used
@@ -168,7 +167,7 @@ Glue job logs emitted to CloudWatch:
 Invalid rows are written to:
 - `s3://ecom-p3-quarantine/{dataset}/`
 
-**Why this is enterprise-correct**
+**Why**
 - Deterministic behavior
 - Full control over error classification
 - No silent data loss
