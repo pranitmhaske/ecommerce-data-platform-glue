@@ -136,12 +136,12 @@ def process_dataset(spark, dataset_name, bronze_path, silver_path, quarantine_ba
         df = df.withColumn(c, F.col(c).cast("string"))
 
     # repartition by event_date to ensure all files contain event_date
-    df = df.repartition(50, "event_date")
+    df = df.repartition("event_date")
 
     # write silver output to S3
     write_silver_output(df, silver_path)
     df.unpersist()
-    print(f"COMPLETED DATASET: {dataset_name}\n")
+    print(f"COMPLETED DATASET: {dataset_name}")
 
 # MAIN
 def main():
