@@ -64,7 +64,7 @@ def add_event_date(df):
         return df.withColumn("event_date", F.to_date("updated_at"))
     elif "created_at" in df.columns:
         return df.withColumn("event_date", F.to_date("created_at"))
-    return df.withColumn("event_date", F.current_date())
+    return df.withColumn("event_date", F.lit("1900-01-01").cast("date"))
 
 # MAIN DATASET PROCESSOR
 def process_dataset(spark, dataset_name, bronze_path, silver_path, quarantine_base, metrics_base):
