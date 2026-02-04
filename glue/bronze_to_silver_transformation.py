@@ -26,7 +26,7 @@ bronze_base = args["bronze_path"]
 silver_base = args["silver_path"]
 quarantine_base = args["quarantine_path"]
 metrics_base = args["metrics_path"]
-job_name         = args["JOB_NAME"]
+job_name = args["JOB_NAME"]
 
 
 # SPARK / GLUE SESSION BUILDER
