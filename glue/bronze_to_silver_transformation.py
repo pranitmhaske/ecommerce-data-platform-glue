@@ -45,13 +45,11 @@ def create_spark_session(app_name="bronze_to_silver"):
     return spark, glueContext
 
 # STRICT PIPELINE STOPPER
-def assert_non_empty(df, step, dataset_name, hard=False):
-    if df is None:
-        raise RuntimeError(f"{dataset_name} failed at {step}")
-
-    if hard and not df.take(1):
-        raise RuntimeError(f"{dataset_name} produced 0 rows at {step}")
-
+def assert_non_empty(df, step_name, dataset_name):
+    if df is None or df.isEmpty():
+        raise RuntimeError(
+            f"STRICT_FAIL: step `{step_name}` produced 0 rows for dataset '{dataset_name}'"
+        )
     return df
 
 # EVENT DATE LOGIC
@@ -74,7 +72,7 @@ def process_dataset(spark, dataset_name, bronze_path, silver_path, quarantine_ba
 
     # load bronze
     df = load_bronze_data(spark, bronze_path)
-    df = assert_non_empty(df, "load_bronze_data", dataset_name, hard=True)
+    df = assert_non_empty(df, "load_bronze_data", dataset_name)
 
     # normalize schema + handle drift
     df, _ = normalize_schema(df, dataset_name, allow_quarantine=True)
@@ -93,13 +91,13 @@ def process_dataset(spark, dataset_name, bronze_path, silver_path, quarantine_ba
     # quarantine bad rows
     quarantine_path = f"{quarantine_base}/{dataset_name}"
     good, bad = quarantine_rows(df, dataset_name, quarantine_path)
-    good_exists = bool(good.take(1))
-    bad_exists  = bad is not None and bool(bad.take(1))
+    good_exists = not good.isEmpty()
+    bad_exists  = bad is not None and not bad.isEmpty()
     print("Quarantine -> good:", good_exists, "| bad:", bad_exists)
     
     # only good rows move forward
     df = good.persist()
-    df = assert_non_empty(df, "quarantine_filtering", dataset_name, hard=True)
+    df = assert_non_empty(df, "quarantine_filtering", dataset_name)
 
     # SCD merge for users only
     if dataset_name == "users":
@@ -136,7 +134,7 @@ def process_dataset(spark, dataset_name, bronze_path, silver_path, quarantine_ba
         df = df.withColumn(c, F.col(c).cast("string"))
 
     # repartition by event_date to ensure all files contain event_date
-    df = df.repartition("event_date")
+    df = df.repartition(50, "event_date")
 
     # write silver output to S3
     write_silver_output(df, silver_path)
