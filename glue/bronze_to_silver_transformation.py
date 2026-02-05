@@ -45,12 +45,12 @@ def create_spark_session(app_name="bronze_to_silver"):
     return spark, glueContext
 
 # STRICT PIPELINE STOPPER
-def assert_non_empty(df, step, dataset, hard=False):
+def assert_non_empty(df, step, dataset_name, hard=False):
     if df is None:
-        raise RuntimeError(f"{dataset} failed at {step}")
+        raise RuntimeError(f"{dataset_name} failed at {step}")
 
     if hard and not df.take(1):
-        raise RuntimeError(f"{dataset} produced 0 rows at {step}")
+        raise RuntimeError(f"{dataset_name} produced 0 rows at {step}")
 
     return df
 
