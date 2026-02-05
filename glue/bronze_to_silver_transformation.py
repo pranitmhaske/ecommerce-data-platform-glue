@@ -171,3 +171,6 @@ def main():
     job.commit()
     spark.stop()
     print("ALL DATASETS PROCESSED")
+
+if __name__=="__main__":
+    main()
