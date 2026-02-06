@@ -58,6 +58,6 @@ def validate(df, spark, dataset_name, metrics_path):
             ok, bad = dq_check_timestamp(df, tcol)
             metrics[f"dq_timestamp_{tcol}"] = bad
 
-    # 3. Write metrics
+    # Write metrics
     write_metrics(spark, dataset_name, metrics_path, metrics)
     return df
